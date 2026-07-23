@@ -11,6 +11,8 @@ import { useFullscreen } from './useFullscreen';
 import { TextLayerOverlay } from './TextLayerOverlay';
 import { renderTextLayer, resolveTextLayerAlpha } from '../../../lib/text/renderTextLayer';
 import { ensureTextFontsReady } from '../../../lib/text/loadFonts';
+import { renderTransitionFrame } from '../../../plugins/transitions/transitionKit';
+import { compositeClipBoundary } from './transitionBoundary';
 import { compileReelTimeline, reelDuration } from './project';
 import { reelGradeStack, reelVisualEffectStack, type ReelClip, type ReelProject } from './types';
 import {
@@ -100,6 +102,7 @@ type ReelPreviewProps = {
   project: ReelProject;
   fit?: PlayerFit;
   onFitChange?: (fit: PlayerFit) => void;
+  simplifiedPreview?: boolean;
   editClipId?: string | null;
   editLayers?: TextLayer[];
   selectedLayerId?: string | null;
@@ -112,6 +115,7 @@ export function ReelPreview({
   project,
   fit = 'fit',
   onFitChange,
+  simplifiedPreview = false,
   editClipId = null,
   editLayers,
   selectedLayerId = null,
@@ -170,6 +174,45 @@ export function ReelPreview({
     delete canvas.dataset.pixelSortMorphologyFrame;
     delete canvas.dataset.pixelSortPhase;
     delete canvas.dataset.pixelSortCacheHit;
+
+    // Per-pixel transition pre-pass: when the playhead is inside a per-pixel
+    // transition window, draw ONE blended full-frame (the same renderTransitionFrame
+    // + boundary compositor the export uses) and skip the normal clip loop.
+    for (let index = 1; index < project.clips.length; index += 1) {
+      const clip = project.clips[index];
+      const overlap = timeline.clips[index].incomingOverlap;
+      const plugin = pluginRegistry.getTransition(clip.transition);
+      if (!plugin?.renderFrame || overlap <= 0) continue;
+      const winStart = timeline.clips[index].start;
+      if (time < winStart || time > winStart + overlap) continue;
+      const previous = project.clips[index - 1];
+      const imagePrev = images[previous.id];
+      const imageCur = images[clip.id];
+      if (!imagePrev || !imageCur) continue;
+      const scale = plugin.previewQuality === 'reduced' ? 0.5 : 1;
+      const workWidth = Math.max(2, Math.round(canvas.width * scale));
+      const workHeight = Math.max(2, Math.round(canvas.height * scale));
+      const frameA = compositeClipBoundary(imagePrev, imagePrev.naturalWidth, imagePrev.naturalHeight, previous, workWidth, workHeight, 'out');
+      const frameB = compositeClipBoundary(imageCur, imageCur.naturalWidth, imageCur.naturalHeight, clip, workWidth, workHeight, 'in');
+      const params = resolvedPluginParams(plugin, clip.pluginParams?.[clip.transition], { duration: overlap });
+      const rgba = renderTransitionFrame(plugin, {
+        frameA, frameB, rawProgress: (time - winStart) / overlap, width: workWidth, height: workHeight, params,
+      });
+      const work = document.createElement('canvas');
+      work.width = workWidth;
+      work.height = workHeight;
+      const workContext = work.getContext('2d');
+      if (workContext) {
+        const imageData = workContext.createImageData(workWidth, workHeight);
+        imageData.data.set(rgba);
+        workContext.putImageData(imageData, 0, 0);
+        context.imageSmoothingEnabled = scale !== 1;
+        context.drawImage(work, 0, 0, canvas.width, canvas.height);
+      }
+      context.restore();
+      return;
+    }
+
     project.clips.forEach((clip, index) => {
       const timelineClip = timeline.clips[index];
       const start = timelineClip.start;
@@ -409,6 +452,7 @@ export function ReelPreview({
       >
         <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} aria-label="Local reel preview" />
         {!project.clips.length && <div className="reel-preview-empty">Add images to begin the edit.</div>}
+        {simplifiedPreview && <div className="reel-preview-note">Preview simplified — export is full quality</div>}
         {editLayers && editLayers.length > 0 && !playing && onSelectLayer && onChangeLayer && onDeleteLayer && (
           <TextLayerOverlay
             layers={editLayers}

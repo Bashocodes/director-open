@@ -67,6 +67,22 @@ const input: DirectorContextInput = {
 };
 
 describe('Director canvas context serializer', () => {
+  it('survives registry transitions/motions not in the curated action enums', () => {
+    // A user can pick per-pixel transitions and new camera moves via the picker;
+    // those ids are advisory labels in the outbound text context, never validated.
+    const withNewPlugins: DirectorContextInput = {
+      ...input,
+      reelProject: {
+        ...input.reelProject!,
+        clips: [{ ...input.reelProject!.clips[0], transition: 'ripple-dissolve', motion: 'apex-shake' }],
+      },
+    };
+    const serialized = serializeDirectorContext(withNewPlugins, 2_000);
+    expect(serialized).toContain('ripple-dissolve');
+    expect(serialized).toContain('apex-shake');
+  });
+
+
   it('is stable, token-budgeted, and excludes local media names and URLs', () => {
     const first = serializeDirectorContext(input, 1_000);
     const second = serializeDirectorContext(structuredClone(input), 1_000);

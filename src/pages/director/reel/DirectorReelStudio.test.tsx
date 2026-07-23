@@ -71,6 +71,12 @@ function chooseOption(label: string, option: string) {
   fireEvent.click(screen.getByRole('option', { name: new RegExp(`^${option}\\b`) }));
 }
 
+/** The registry-driven PluginPicker uses a plain button trigger + button items. */
+function choosePluginOption(label: string, option: string) {
+  fireEvent.click(screen.getByRole('button', { name: label }));
+  fireEvent.click(screen.getByText(option));
+}
+
 describe('Director Reel Studio render transactions', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -270,7 +276,7 @@ describe('Director Reel Studio render transactions', () => {
     };
     render(<Harness initial={{ ...initialProject, clips: [...initialProject.clips, second] }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Select all' }));
-    chooseOption('Transition', 'Dip to black');
+    choosePluginOption('Transition', 'Dip to black');
     fireEvent.change(screen.getByLabelText('Blend'), { target: { value: '0.6' } });
     const state = JSON.parse(screen.getByTestId('project-state').textContent || '{}') as ReelProject;
     expect(state.clips[0]).toMatchObject({ transition: 'cut', transitionDuration: 0 });

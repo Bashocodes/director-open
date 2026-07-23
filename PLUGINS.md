@@ -169,6 +169,17 @@ A transition supplies:
 - `preview({ progress, width, height, params })`, returning `opacity`, `translateX`, `translateY`, and `scale`.
 - `ffmpegTransition({ params })`, returning an FFmpeg `xfade` transition name such as `fade`, `slideleft`, or `dissolve`.
 
+Optionally, a transition may also supply a **per-pixel** blend:
+
+- `renderFrame({ frameA, frameB, progress, width, height, params }) → Uint8ClampedArray` —
+  a pure function of the two clips' composited boundary frames. When present it is the
+  single source of truth for both preview and export (the affine `preview`/`ffmpegTransition`
+  become fallbacks; see the [Transition engine](./docs/DECISIONS.md) decision). It MUST
+  return exactly `frameA` at progress 0 and `frameB` at progress 1, and MUST express every
+  spatial quantity as a fraction of the frame so preview (540-wide) and export (1080-wide)
+  render the same transition. Optional `previewQuality: 'reduced'` processes the preview at
+  half scale and surfaces a "preview simplified — export is full quality" note.
+
 The first clip cannot have an incoming transition. Transition duration remains a clip-level compatibility field, described below.
 
 ## Render order and stages
@@ -330,6 +341,57 @@ The important decisions are:
 7. `heavy` gives the render more time and warns before a low-quality render; `textureCritical` asks the final H.264 encode to retain the dot texture.
 
 No FFmpeg implementation is needed for this plugin. Director runs this exact transform for preview and for the frames supplied to FFmpeg.
+
+## Writing a transition: `ripple-dissolve`
+
+[`ripple-dissolve.plugin.ts`](./src/plugins/transitions/ripple-dissolve.plugin.ts) is the
+worked example for a per-pixel transition. The steps generalize to any of the seven
+cinematic transitions.
+
+1. **Schema with `duration`, `easing`, and fraction-normalized params.** Every spatial
+   value (`wavelength`, `amplitude`, `softness`, `originX/Y`) is a fraction, never a pixel
+   count, and every default is a non-linear easing curve:
+
+   ```ts
+   const ParamsSchema = z.object({
+     duration: z.number().min(0.1).max(3).default(0.9),
+     easing: z.enum(EASING_CURVES).default('ease-in-out'),
+     originX: z.number().min(0).max(1).default(0.5),
+     wavelength: z.number().min(0.02).max(0.5).default(0.14),
+     amplitude: z.number().min(0).max(0.25).default(0.06),
+     // …
+   });
+   ```
+
+2. **Implement `renderFrame` from first principles.** A radial sine expands from the
+   origin; near the moving front the image is displaced along the radius, and a soft
+   mixing front carries A into B. Sample both frames with the shared
+   `sampleBilinearInto` helper and blend:
+
+   ```ts
+   const signed = distNorm - progress;                 // <0 inside front (B), >0 outside (A)
+   const mixB = smoothstep(clamp01(0.5 - signed / (2 * softness)));
+   const amp = Math.sin((distNorm / wavelength - progress) * 2 * Math.PI)
+     * amplitudePx * Math.exp(-(signed * signed) / (2 * softness * softness));
+   // sample frameA and frameB at (x + dir*amp, y + dir*amp), then out = mix(A, B, mixB)
+   ```
+
+   Return `frameA` at progress 0 and `frameB` at progress 1 (the engine also enforces this).
+
+3. **Keep the affine fallbacks.** Provide a reasonable `preview` (an opacity crossfade)
+   and `ffmpegTransition` (`'fade'`). They are never seen when `renderFrame` runs — the
+   export overlays the per-pixel PNG sequence over the covered xfade base — but they keep
+   the registry contract satisfied and give a graceful degrade.
+
+4. **Save the file under `src/plugins/`** as `*.plugin.ts`. It is auto-discovered — no
+   core edits — and immediately appears in the registry-driven picker with a live thumbnail
+   and its Zod-generated parameter controls.
+
+5. **Golden + parity test.** Feed synthetic RGBA frames straight into
+   `renderTransitionFrame` and fingerprint the output at 0.25/0.5/0.75 (see
+   `src/plugins/transitions/transitions.golden.test.ts`). The blend is pure typed-array
+   math, so it runs deterministically in jsdom; the canvas boundary compositing is not
+   runnable there (document that, like the render goldens).
 
 ## Parameters, generated controls, and persistence
 

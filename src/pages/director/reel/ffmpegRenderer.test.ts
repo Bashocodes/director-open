@@ -156,6 +156,26 @@ describe('FFmpeg reel command compiler', () => {
     expect(plan.duration).toBe(6.5);
   });
 
+  it('overlays a per-pixel transition PNG sequence over the covered xfade base', () => {
+    // clip a (3s) → clip b (4s) with a 0.5s overlap: window is [2.5, 3.0].
+    const plan = buildFfmpegCommand(
+      project,
+      ['image-0.jpg', 'image-1.jpg'],
+      [null, null],
+      [],
+      null,
+      [{ pairIndex: 1, inputIndex: 2, name: 'transition-1-%04d.png', start: 2.5, duration: 0.5 }],
+    );
+    // The sequence is an ordered PNG input numbered after images.
+    expect(plan.args.join(' ')).toContain('-framerate 30 -start_number 0 -i transition-1-%04d.png');
+    // The base xfade timeline is untouched; the transition overlays on top.
+    expect(plan.filterGraph).toContain('[video-out]');
+    // setpts shifts the sequence so frame 0 lands at the window start.
+    expect(plan.filterGraph).toContain('setpts=PTS+2.5/TB');
+    // Opaque overlay enabled only across the transition window.
+    expect(plan.filterGraph).toContain("overlay=0:0:enable='between(t,2.5,3)'");
+  });
+
   it('composites text layers as full-frame overlays with enable windows and fades', () => {
     const layer = {
       ...createTextLayer('t-fade', { content: 'HELLO', clipDuration: 3 }),

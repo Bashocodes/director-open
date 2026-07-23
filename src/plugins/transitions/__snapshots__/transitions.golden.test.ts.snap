@@ -1,0 +1,41 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`per-pixel transition goldens > produces stable, deterministic fingerprints at 0.25/0.5/0.75 1`] = `
+{
+  "dip-to": [
+    "065aa7a5",
+    "cbb6ad05",
+    "631481e5",
+  ],
+  "directional-wipe": [
+    "9dec452e",
+    "ff3f6159",
+    "06aa5f19",
+  ],
+  "glitch-cut": [
+    "c76ec375",
+    "2912859d",
+    "775c637d",
+  ],
+  "liquid-melt": [
+    "558bbc65",
+    "8b72cdda",
+    "62182b6a",
+  ],
+  "luma-wipe": [
+    "e432fde3",
+    "e576c706",
+    "bada1d82",
+  ],
+  "ripple-dissolve": [
+    "530c75c9",
+    "714fd25f",
+    "81622edc",
+  ],
+  "whip-pan": [
+    "431bc2ad",
+    "217fc36d",
+    "67c0b285",
+  ],
+}
+`;

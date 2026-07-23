@@ -119,6 +119,23 @@ export type TransitionFfmpegInput<TParams extends PluginParamValues = PluginPara
   params: TParams;
 };
 
+/**
+ * Per-pixel transition input. `frameA`/`frameB` are the two clips' composited
+ * boundary frames (RGBA, length = width*height*4); `progress` is already eased
+ * to 0..1. A transition's `renderFrame` MUST return exactly frameA at progress 0
+ * and frameB at progress 1, and must express every spatial quantity as a
+ * fraction of the frame so 540-wide preview and 1080-wide export are the same
+ * transition at different sampling densities.
+ */
+export type TransitionFrameInput<TParams extends PluginParamValues = PluginParamValues> = {
+  frameA: Uint8ClampedArray;
+  frameB: Uint8ClampedArray;
+  progress: number;
+  width: number;
+  height: number;
+  params: TParams;
+};
+
 export type LegacyCanvasEffectInput = {
   context: CanvasRenderingContext2D;
   clipId: string;
@@ -257,6 +274,19 @@ export type TransitionPlugin<TSchema extends PluginParamsSchema = PluginParamsSc
     ffmpegTransition: (
       input: TransitionFfmpegInput<z.output<TSchema>>,
     ) => string;
+    /**
+     * Optional pure per-pixel blend. When present it is the single source of
+     * truth for both preview and export (the affine `preview`/`ffmpegTransition`
+     * become fallbacks). See {@link TransitionFrameInput}.
+     */
+    renderFrame?: (
+      input: TransitionFrameInput<z.output<TSchema>>,
+    ) => Uint8ClampedArray;
+    /**
+     * `reduced` tells the preview to process at a coarser scale and show a
+     * "preview simplified — export is full quality" note. Export is always full.
+     */
+    previewQuality?: 'full' | 'reduced';
   };
 
 export type DirectorPlugin<TSchema extends PluginParamsSchema = PluginParamsSchema> =

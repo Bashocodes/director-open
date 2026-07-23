@@ -5,6 +5,36 @@ use ISO 8601.
 
 ## [Unreleased]
 
+### Transition, camera, and effect expansion
+
+A large creative expansion — every addition is a registry plugin (auto-discovered,
+no hardcoded switch), and no WebGL, shader, or noise/easing libraries were added.
+
+- **Transition engine v2.** Transitions may now supply a pure per-pixel
+  `renderFrame(frameA, frameB, progress, params) → RGBA`. One shared
+  `renderTransitionFrame` + boundary compositor drive BOTH the live preview and the
+  export, which splices a PNG sequence as an opaque overlay over the (covered,
+  duration-preserving) xfade base. Parity mechanism documented in docs/DECISIONS.md.
+- **7 new per-pixel transitions**, each with typed params (duration + easing, every
+  default eased) and original first-principles math: ripple-dissolve (radial sine
+  displacement), liquid-melt (inline value/gradient noise), directional-wipe
+  (angle + edge glow), luma-wipe (procedural luma maps), whip-pan (multi-sample
+  motion-blur smear), dip-to (asymmetric dip to black/white), glitch-cut (seeded
+  deterministic RGB-split slices).
+- **5 new camera moves** (motion plugins), eased in both the preview pose and the
+  FFmpeg zoompan expression: slow-push, slow-pull, drift-diagonal, tilt-parallax,
+  and apex-shake (an eased shake burst at a configurable point — never a constant
+  baseline shake).
+- **3 new effects**: film-grain (procedural, animated, luma-aware), halation-bloom
+  (threshold highlight glow via separable box blur), vignette-breathe (slow eased
+  vignette oscillation). Implemented as pre-motion frameTransforms so one code path
+  renders preview and export.
+- **Registry-driven picker.** A grouped, searchable, keyboard-navigable popover with
+  a LIVE animated thumbnail per item (the real plugin rendered on synthetic frames)
+  replaces the flat transition/camera dropdowns; new plugins light up automatically.
+  Zod-derived parameter controls render for every plugin. Reduced-quality plugins
+  show a "preview simplified — export is full quality" note.
+
 ### Text / caption layer system
 
 Replaced the single plain caption string with a professional text-layer system.

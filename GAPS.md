@@ -157,11 +157,15 @@ boundary and cover media lifecycle, selection, and compound edits.
 The current reel schema supports still clips and one optional audio track. Each
 clip now carries a full text-layer system — multiple positioned, styled, timed
 layers with bundled fonts, scrim/outline/shadow, fades, and WYSIWYG preview↔export
-parity — so the earlier single-plain-caption limitation is closed. It still does
-not provide video clip trim/speed, waveform or beat analysis, audio volume/fades,
-non-text multilayer composition, keyframes, masks, true HDR mastering, or
-pixel-identical Canvas/FFmpeg transition preview. “HDR look” is deliberately an
-SDR grade.
+parity — so the earlier single-plain-caption limitation is closed. Per-pixel transitions now share one blend function and boundary compositor across
+preview and export (see the "Transition engine" decision), so the transition blend
+is parity-exact on identical boundary frames; the residual difference is the
+JS-vs-FFmpeg grade of the clip body around the transition, not the transition
+itself. It still does not provide video clip trim/speed, waveform or beat analysis,
+audio volume/fades, non-text multilayer composition, keyframes, masks, true HDR
+mastering, or a real-browser end-to-end render test that confirms transition parity
+visually (unverifiable under the no-dev-server QA constraint). “HDR look” is
+deliberately an SDR grade.
 
 **Difficulty: Very high** — these are multiple independent media/editor
 subsystems and should be scheduled separately.
