@@ -43,6 +43,9 @@ vi.mock('./components/DirectorChat', () => ({
       </div>
       <div data-testid="persistence-status">{props.persistenceStatus}</div>
       <div data-testid="pending-proposal">{props.pendingProposal ? 'pending' : 'clear'}</div>
+      <div data-testid="chat-collapsed">{props.collapsed ? 'collapsed' : 'expanded'}</div>
+      <div data-testid="chat-unread">{props.unread ? 'unread' : 'clear'}</div>
+      <button type="button" onClick={props.onToggleCollapse}>Toggle collapse</button>
       <button type="button" onClick={() => props.onSend('Compile this direction')}>Send direction request</button>
       <button type="button" onClick={() => props.onSend('okay now make a reel')}>Make reel request</button>
       <button type="button" disabled={!props.pendingProposal} onClick={props.onApplyProposal}>Apply proposal</button>
@@ -96,6 +99,28 @@ describe('DirectorPage canvas-aware chat', () => {
     mocks.providerStream.mockImplementation(async function* () {
       yield 'Direction is ready.\nDIRECTOR_ACTIONS_JSON\n[]';
     });
+  });
+
+  it('lights the unread dot when a streamed reply finishes while the chat is collapsed', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    mocks.providerStream.mockImplementation(async function* () {
+      yield 'Working…';
+      await gate; // hold the stream open so we can collapse mid-reply
+      yield '\nDIRECTOR_ACTIONS_JSON\n[]';
+    });
+    render(<DirectorPage />);
+
+    // Reply is created while expanded (composer only exists then).
+    fireEvent.click(screen.getByText('Send direction request'));
+    // User collapses mid-stream — no new message id is produced.
+    fireEvent.click(screen.getByText('Toggle collapse'));
+    expect(screen.getByTestId('chat-collapsed')).toHaveTextContent('collapsed');
+    expect(screen.getByTestId('chat-unread')).toHaveTextContent('clear');
+
+    // Completing the reply while collapsed must light the unread dot.
+    release();
+    await waitFor(() => expect(screen.getByTestId('chat-unread')).toHaveTextContent('unread'));
   });
 
   it('uses browser vault provider settings and keeps them across project resets', () => {

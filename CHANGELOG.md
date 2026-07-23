@@ -3,6 +3,42 @@
 This changelog describes product phases rather than individual commits. Dates
 use ISO 8601.
 
+## [Unreleased]
+
+### Workspace UX overhaul
+
+Layout, legibility, and interaction-quality pass over the editor shell. No render
+pipeline, schema, MCP, or AI-provider behavior changed; the local-first boundary
+is untouched.
+
+- Added a single design-token module (`designTokens.ts`) — type scale, spacing,
+  radii, and an ordered z-index scale — injected as CSS custom properties and
+  applied across the stylesheets. Removed all sub-11px text and raised dim
+  label colors to meet WCAG AA contrast on the dark theme.
+- Introduced a dedicated workspace-layout state module (`workspaceLayout.ts`)
+  with a reducer and its own `director-open.workspace.v1` localStorage key, so UI
+  chrome never enters the project schema.
+- Made the Director chat panel collapsible to a slim rail (icon, unread dot,
+  expand affordance) via the rail, a header button, and Cmd/Ctrl+\; the state
+  persists and the canvas/timeline reclaim the freed width.
+- Replaced the permanent left "Local Library" dock with an on-demand media
+  drawer (slide-over from the left; Escape/outside-click/X to close) backed by a
+  small `LibrarySource` seam for future providers.
+- Added a fullscreen reel player (Fullscreen API, Esc to exit, controls fade
+  after 2s idle, double-click toggle), plus Space play/pause, arrow-key scrub
+  (Shift = frame-precise), and a fit/fill toggle.
+- Rebuilt the render bar into one coherent action bar: a legible format chip on
+  the left, the primary "Render on this device" CTA on the right, and engine
+  details moved into an info popover.
+- Grouped the clip inspector into collapsible sections with sticky mini-headers
+  and remembered open/closed state; the selected clip name truncates with the
+  full name on hover.
+- Redesigned the first-run canvas, empty drawer, and empty timeline states to be
+  calm and instructional (two lines + one action each).
+- Fixed floating-overlay stacking: every absolute/fixed surface now draws from
+  the shared z-index scale, and the settings/history popovers are height-capped
+  so their controls no longer overlap the chat composer.
+
 ## [0.1.0-alpha.0] - 2026-07-23
 
 Private QA cut. No production deployment, package publication, or repository

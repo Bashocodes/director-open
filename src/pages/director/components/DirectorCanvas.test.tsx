@@ -28,7 +28,6 @@ vi.mock('@xyflow/react', async () => {
 
 vi.mock('./DirectorDock', () => ({ DirectorDock: () => null }));
 vi.mock('./DirectorNode', () => ({ DirectorNode: () => null }));
-vi.mock('./DirectorLibrary', () => ({ DirectorLibrary: () => null }));
 
 import { DirectorCanvas } from './DirectorCanvas';
 
@@ -43,7 +42,7 @@ const baseProps = {
   goal: 'Build a direction', exclusions: [] as string[], contract: null, sequence: null, continuity: null,
   onGoalChange: vi.fn(), onExclusionsChange: vi.fn(), onModeChange: vi.fn(), onSelectionChange: vi.fn(),
   onPositionChange: vi.fn(), onToggleChannel: vi.fn(), onUploadFiles: vi.fn(),
-  onRemoveObject: vi.fn(),
+  onRemoveObject: vi.fn(), onOpenLibrary: vi.fn(),
 };
 
 describe('DirectorCanvas viewport', () => {

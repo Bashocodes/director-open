@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
   Check,
+  ChevronDown,
   Download,
   ImagePlus,
-  Laptop,
+  Info,
   LoaderCircle,
   Music,
   Scissors,
@@ -51,6 +52,7 @@ import {
   type ReelProject,
   type ReelRenderState,
 } from './types';
+import type { InspectorSectionId, PlayerFit } from '../workspaceLayout';
 import './DirectorReelStudio.css';
 
 type Props = {
@@ -59,7 +61,40 @@ type Props = {
   onClose: () => void;
   canvasSelectionCount?: number;
   onUseCanvasSelection?: () => void;
+  playerFit?: PlayerFit;
+  onPlayerFitChange?: (fit: PlayerFit) => void;
+  inspectorSections?: Record<InspectorSectionId, boolean>;
+  onToggleInspectorSection?: (id: InspectorSectionId) => void;
 };
+
+const DEFAULT_INSPECTOR_SECTIONS: Record<InspectorSectionId, boolean> = {
+  output: true, look: true, motion: true, timing: true,
+};
+
+function InspectorSection({ id, title, meta, open, onToggle, children }: {
+  id: InspectorSectionId;
+  title: string;
+  meta?: string;
+  open: boolean;
+  onToggle?: (id: InspectorSectionId) => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className={`inspector-section ${open ? 'open' : 'closed'}`}>
+      <button
+        type="button"
+        className="inspector-section-head"
+        aria-expanded={open}
+        onClick={() => onToggle?.(id)}
+      >
+        <span>{title}</span>
+        {meta && <em>{meta}</em>}
+        <ChevronDown size={14} className={`inspector-section-caret ${open ? 'open' : ''}`} />
+      </button>
+      {open && <div className="inspector-section-body">{children}</div>}
+    </section>
+  );
+}
 
 function fileId(prefix: string) {
   return `${prefix}-${crypto.randomUUID?.() || Date.now().toString(36)}`;
@@ -81,7 +116,17 @@ function indexOfClip(clips: ReelClip[], id: string) {
   return Math.max(0, clips.findIndex((clip) => clip.id === id));
 }
 
-export function DirectorReelStudio({ project, onChange, onClose, canvasSelectionCount = 0, onUseCanvasSelection }: Props) {
+export function DirectorReelStudio({
+  project,
+  onChange,
+  onClose,
+  canvasSelectionCount = 0,
+  onUseCanvasSelection,
+  playerFit = 'fit',
+  onPlayerFitChange,
+  inspectorSections = DEFAULT_INSPECTOR_SECTIONS,
+  onToggleInspectorSection,
+}: Props) {
   const activeRenderRef = useRef<{
     id: number;
     renderer: BrowserFfmpegRenderer;
@@ -97,6 +142,7 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
   const [verifyReport, setVerifyReport] = useState<VerifyReport | null>(null);
   const [mediaNotice, setMediaNotice] = useState('');
   const [showQualityWarning, setShowQualityWarning] = useState(false);
+  const [showRenderDetails, setShowRenderDetails] = useState(false);
   const selectedClipIds = project.selectedClipIds.filter((id) => project.clips.some((clip) => clip.id === id));
   const selectedId = selectedClipIds[0];
   const selectedClip = project.clips.find((clip) => clip.id === selectedId) || null;
@@ -410,94 +456,104 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
 
       <div className="reel-studio-body">
         <div className="reel-preview-column">
-          <ReelPreview project={project} />
-          <div className="reel-capability">
-            <Laptop size={13} />
-            <span>{capability.cores ? `${capability.cores} logical cores` : 'Local processor'}</span>
-            <span>{capability.memory ? `${capability.memory} GB memory hint` : 'Memory managed by browser'}</span>
-            <span className={constrainedHighQuality ? 'compat' : 'ready'}>{constrainedHighQuality ? '1080p may be slow · 720p recommended' : 'Premium local effect engine'}</span>
-          </div>
+          <ReelPreview project={project} fit={playerFit} onFitChange={onPlayerFitChange} />
         </div>
 
         <aside className="reel-inspector">
-          <div className="reel-project-settings">
-            <ReelSelect label="Format" value={project.aspectRatio} options={REEL_FORMATS} onChange={(aspectRatio) => commitProject({ ...project, aspectRatio })} />
-            <ReelSelect label="Quality" value={project.quality} options={REEL_QUALITIES} onChange={(quality) => commitProject({ ...project, quality })} />
-            <ReelSelect className="frame-rate-select" label="Frame rate" value={String(project.fps) as '24' | '30'} options={[
-              { id: '24', label: '24 fps', description: 'Traditional film cadence.' },
-              { id: '30', label: '30 fps', description: 'Smoother motion.' },
-            ]} onChange={(fps) => commitProject({ ...project, fps: Number(fps) as 24 | 30 })} />
-            <p className="quality-note">{REEL_QUALITIES.find((item) => item.id === project.quality)?.description} File size follows duration and image detail—not the source JPG size.</p>
-          </div>
+          <InspectorSection
+            id="output"
+            title="Output"
+            meta={`${project.aspectRatio} · ${project.fps} fps`}
+            open={inspectorSections.output}
+            onToggle={onToggleInspectorSection}
+          >
+            <div className="reel-project-settings">
+              <ReelSelect label="Format" value={project.aspectRatio} options={REEL_FORMATS} onChange={(aspectRatio) => commitProject({ ...project, aspectRatio })} />
+              <ReelSelect label="Quality" value={project.quality} options={REEL_QUALITIES} onChange={(quality) => commitProject({ ...project, quality })} />
+              <ReelSelect className="frame-rate-select" label="Frame rate" value={String(project.fps) as '24' | '30'} options={[
+                { id: '24', label: '24 fps', description: 'Traditional film cadence.' },
+                { id: '30', label: '30 fps', description: 'Smoother motion.' },
+              ]} onChange={(fps) => commitProject({ ...project, fps: Number(fps) as 24 | 30 })} />
+              <p className="quality-note">{REEL_QUALITIES.find((item) => item.id === project.quality)?.description} File size follows duration and image detail—not the source JPG size.</p>
+            </div>
+          </InspectorSection>
 
           {selectedClip ? (
             <div className="clip-inspector">
-              <div className="inspector-heading"><Scissors size={13} /><span>CLIP CONTROL · {selectedClipIds.length} SELECTED</span><strong>{selectedClipIds.length > 1 ? `${selectedClipIds.length} clips` : selectedClip.title}</strong></div>
-              <ReelStackControl
-                label="Color grade"
-                values={reelGradeStack(selectedClip)}
-                fallbackValue="clean"
-                options={REEL_GRADES}
-                onChange={(gradeStack) => updateClip(selectedClip.id, {
-                  effect: gradeStack[0] || 'clean',
-                  gradeStack,
-                })}
-              />
-              <ReelStackControl
-                label="Visual effect"
-                values={reelVisualEffectStack(selectedClip)}
-                emptyValue="none"
-                fallbackValue="none"
-                options={REEL_VISUAL_EFFECTS}
-                onChange={(visualEffectStack) => updateClip(selectedClip.id, {
-                  visualEffect: visualEffectStack[0] || 'none',
-                  visualEffectStack,
-                })}
-              />
-              {selectedEffectPlugins.map((plugin) => (
+              <div className="inspector-heading">
+                <span><Scissors size={12} /> Clip · {selectedClipIds.length} selected</span>
+                <strong title={selectedClipIds.length > 1 ? `${selectedClipIds.length} clips selected` : selectedClip.title}>
+                  {selectedClipIds.length > 1 ? `${selectedClipIds.length} clips` : selectedClip.title}
+                </strong>
+              </div>
+
+              <InspectorSection id="look" title="Look" open={inspectorSections.look} onToggle={onToggleInspectorSection}>
+                <ReelStackControl
+                  label="Color grade"
+                  values={reelGradeStack(selectedClip)}
+                  fallbackValue="clean"
+                  options={REEL_GRADES}
+                  onChange={(gradeStack) => updateClip(selectedClip.id, {
+                    effect: gradeStack[0] || 'clean',
+                    gradeStack,
+                  })}
+                />
+                <ReelStackControl
+                  label="Visual effect"
+                  values={reelVisualEffectStack(selectedClip)}
+                  emptyValue="none"
+                  fallbackValue="none"
+                  options={REEL_VISUAL_EFFECTS}
+                  onChange={(visualEffectStack) => updateClip(selectedClip.id, {
+                    visualEffect: visualEffectStack[0] || 'none',
+                    visualEffectStack,
+                  })}
+                />
+                {selectedEffectPlugins.map((plugin) => (
+                  <PluginParamFields
+                    key={plugin.id}
+                    plugin={plugin}
+                    values={resolvedPluginParams(
+                      plugin,
+                      selectedClip.pluginParams?.[plugin.id],
+                      { intensity: selectedClip.intensity },
+                    )}
+                    excludeFields={plugin.id === sharedIntensityPluginId ? [] : ['intensity']}
+                    onChange={(field, value) => updatePluginParam(
+                      selectedClip.id,
+                      plugin.id,
+                      field,
+                      value,
+                      field === 'intensity' ? 'intensity' : undefined,
+                    )}
+                  />
+                ))}
+              </InspectorSection>
+
+              <InspectorSection id="motion" title="Motion & transition" open={inspectorSections.motion} onToggle={onToggleInspectorSection}>
+                <ReelSelect label="Camera move" value={selectedClip.motion} options={REEL_MOTIONS} onChange={(motion) => updateClip(selectedClip.id, { motion })} />
                 <PluginParamFields
-                  key={plugin.id}
-                  plugin={plugin}
-                  values={resolvedPluginParams(
-                    plugin,
-                    selectedClip.pluginParams?.[plugin.id],
-                    { intensity: selectedClip.intensity },
-                  )}
-                  excludeFields={plugin.id === sharedIntensityPluginId ? [] : ['intensity']}
+                  plugin={selectedMotionPlugin}
+                  values={selectedClip.pluginParams?.[selectedClip.motion]}
                   onChange={(field, value) => updatePluginParam(
                     selectedClip.id,
-                    plugin.id,
+                    selectedClip.motion,
                     field,
                     value,
-                    field === 'intensity' ? 'intensity' : undefined,
                   )}
                 />
-              ))}
-              <ReelSelect label="Camera move" value={selectedClip.motion} options={REEL_MOTIONS} onChange={(motion) => updateClip(selectedClip.id, { motion })} />
-              <PluginParamFields
-                plugin={selectedMotionPlugin}
-                values={selectedClip.pluginParams?.[selectedClip.motion]}
-                onChange={(field, value) => updatePluginParam(
-                  selectedClip.id,
-                  selectedClip.motion,
-                  field,
-                  value,
-                )}
-              />
-              <ReelSelect label="Transition" value={transitionClip?.transition || 'cut'} options={REEL_TRANSITIONS} disabled={!hasEditableTransitionTarget} onChange={(nextTransition) => {
-                const transition = nextTransition;
-                const plugin = pluginRegistry.getTransition(transition);
-                const defaults = plugin ? safePluginParams(plugin) : {};
-                const defaultDuration = typeof defaults.duration === 'number' ? defaults.duration : 0.45;
-                updateClip(transitionClip?.id || selectedClip.id, {
-                  transition,
-                  transitionDuration: transition === 'cut'
-                    ? 0
-                    : Math.max(transitionClip?.transitionDuration || 0, defaultDuration),
-                });
-              }} />
-              <div className="clip-number-row">
-                <label>Seconds<input type="number" min="1" max="12" step="0.1" value={selectedClip.duration} onChange={(event) => updateClip(selectedClip.id, { duration: Math.min(12, Math.max(1, Number(event.target.value))), durationWasUserSet: true })} /></label>
+                <ReelSelect label="Transition" value={transitionClip?.transition || 'cut'} options={REEL_TRANSITIONS} disabled={!hasEditableTransitionTarget} onChange={(nextTransition) => {
+                  const transition = nextTransition;
+                  const plugin = pluginRegistry.getTransition(transition);
+                  const defaults = plugin ? safePluginParams(plugin) : {};
+                  const defaultDuration = typeof defaults.duration === 'number' ? defaults.duration : 0.45;
+                  updateClip(transitionClip?.id || selectedClip.id, {
+                    transition,
+                    transitionDuration: transition === 'cut'
+                      ? 0
+                      : Math.max(transitionClip?.transitionDuration || 0, defaultDuration),
+                  });
+                }} />
                 <PluginParamFields
                   plugin={selectedTransitionPlugin}
                   values={transitionClip && selectedTransitionPlugin
@@ -516,10 +572,14 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
                     field === 'duration' ? 'transitionDuration' : undefined,
                   )}
                 />
-              </div>
-              <label>Caption<input type="text" maxLength={180} value={selectedClip.caption} placeholder="Optional on-screen line" onChange={(event) => updateClip(selectedClip.id, { caption: event.target.value })} /></label>
+              </InspectorSection>
+
+              <InspectorSection id="timing" title="Timing & caption" open={inspectorSections.timing} onToggle={onToggleInspectorSection}>
+                <label>Seconds<input type="number" min="1" max="12" step="0.1" value={selectedClip.duration} onChange={(event) => updateClip(selectedClip.id, { duration: Math.min(12, Math.max(1, Number(event.target.value))), durationWasUserSet: true })} /></label>
+                <label>Caption<input type="text" maxLength={180} value={selectedClip.caption} placeholder="Optional on-screen line" onChange={(event) => updateClip(selectedClip.id, { caption: event.target.value })} /></label>
+              </InspectorSection>
             </div>
-          ) : <div className="clip-inspector-empty">Select a clip in the timeline.</div>}
+          ) : <div className="clip-inspector-empty">Select a clip in the timeline to edit its look, motion, and timing.</div>}
         </aside>
       </div>
 
@@ -563,10 +623,37 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
       </div>
 
       <footer className="reel-render-bar">
-        <button type="button" className="back-board" onClick={onClose}><ArrowLeft size={14} /> Direction board</button>
-        <div className="render-summary">
-          <span>{dimensions.width}×{dimensions.height} · H.264 MP4 · {project.fps} fps</span>
-          <small>FFmpeg premium local worker · zero media upload</small>
+        <button type="button" className="back-board" onClick={onClose}><ArrowLeft size={14} /> Board</button>
+        <div className="render-format">
+          <span className="render-format-chip">{project.aspectRatio} · {dimensions.width}×{dimensions.height} · H.264 · {project.fps}fps</span>
+          <div className="render-detail-anchor">
+            <button
+              type="button"
+              className="render-detail-toggle"
+              aria-expanded={showRenderDetails}
+              aria-label="Render engine details"
+              onClick={() => setShowRenderDetails((open) => !open)}
+            ><Info size={14} /></button>
+            {showRenderDetails && (
+              <>
+                <button type="button" className="render-detail-backdrop" aria-label="Close render details" onClick={() => setShowRenderDetails(false)} />
+                <div className="render-detail-popover" role="dialog" aria-label="Render engine details">
+                  <h4>Local render engine</h4>
+                  <dl>
+                    <div><dt>Engine</dt><dd>FFmpeg.wasm · single-thread</dd></div>
+                    <div><dt>Upload</dt><dd>None — media stays on device</dd></div>
+                    <div><dt>Processor</dt><dd>{capability.cores ? `${capability.cores} logical cores` : 'Managed by browser'}</dd></div>
+                    <div><dt>Memory hint</dt><dd>{capability.memory ? `${capability.memory} GB` : 'Managed by browser'}</dd></div>
+                  </dl>
+                  <p className={constrainedHighQuality ? 'warn' : ''}>
+                    {constrainedHighQuality
+                      ? '1080p may be slow on this device — 720p is recommended.'
+                      : 'This device can run the premium local effect engine.'}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
         </div>
         {renderState.stage !== 'idle' && (
           <div className={`render-status ${renderState.stage}`} role="status" aria-live="polite">

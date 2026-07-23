@@ -8,6 +8,8 @@ import {
   HardDrive,
   History,
   KeyRound,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Settings2,
   Sparkles,
@@ -27,6 +29,9 @@ import { AiSettingsPanel } from './AiSettingsPanel';
 import { DirectorArtifact } from './DirectorArtifact';
 
 type Props = {
+  collapsed: boolean;
+  unread: boolean;
+  onToggleCollapse: () => void;
   messages: ChatTurn[];
   busy: boolean;
   selectedCount: number;
@@ -96,6 +101,27 @@ export function DirectorChat(props: Props) {
     }).format(date);
   }
 
+  if (props.collapsed) {
+    return (
+      <aside className="director-chat collapsed" aria-label="Director Visual Expert (collapsed)">
+        <button
+          type="button"
+          className="chat-rail"
+          onClick={props.onToggleCollapse}
+          title="Expand Director chat (⌘/Ctrl + \)"
+          aria-label="Expand Director chat"
+        >
+          <span className="chat-rail-icon">
+            <Sparkles size={16} />
+            {props.unread && <i className="chat-rail-unread" aria-hidden="true" />}
+          </span>
+          <span className="chat-rail-label">Director</span>
+          <span className="chat-rail-expand"><PanelRightOpen size={16} /></span>
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="director-chat" aria-label="Director Visual Expert">
       <header className="chat-head">
@@ -139,6 +165,7 @@ export function DirectorChat(props: Props) {
           />
           <button type="button" className="new-project-button" title="Start a new Director project" onClick={props.onNewProject}><Plus size={16} /><span>New project</span></button>
           <button type="button" className={props.historyOpen ? 'active' : ''} title="Project history" aria-expanded={props.historyOpen} onClick={props.onToggleHistory}><History size={15} /></button>
+          <button type="button" title="Collapse Director chat (⌘/Ctrl + \)" aria-label="Collapse Director chat" onClick={props.onToggleCollapse}><PanelRightClose size={15} /></button>
         </div>
       </header>
 

@@ -15,7 +15,7 @@
   border-radius: 8px;
   background: rgba(255,255,255,.025);
   color: var(--director-text-3);
-  font-size: 7px;
+  font-size: 11px;
   line-height: 1;
   text-transform: uppercase;
   cursor: pointer;
@@ -82,20 +82,20 @@
 
 .export-verify-heading strong {
   color: var(--director-text-2);
-  font-size: 9px;
-  letter-spacing: .04em;
+  font-size: 12px;
+  letter-spacing: .02em;
 }
 
 .export-verify-heading span {
   color: var(--director-text-4);
-  font-size: 7px;
+  font-size: 11px;
   text-transform: uppercase;
 }
 
 .export-verify-note {
   margin: 0;
   color: var(--director-text-3);
-  font-size: 8px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -111,7 +111,7 @@
   min-width: 610px;
   border-collapse: collapse;
   color: var(--director-text-3);
-  font-size: 7px;
+  font-size: 11px;
   line-height: 1.35;
   text-align: left;
 }
@@ -145,7 +145,7 @@
   border-radius: 99px;
   background: rgba(143,162,154,.12);
   color: var(--director-sage-light);
-  font-size: 6.5px;
+  font-size: 11px;
   text-transform: uppercase;
 }
 
@@ -167,7 +167,7 @@
   border-radius: 7px;
   background: rgba(142,171,200,.1);
   color: var(--director-blue-bright);
-  font: 7px/1 "SFMono-Regular", monospace;
+  font: 11px/1 "SFMono-Regular", monospace;
   text-transform: uppercase;
   cursor: pointer;
 }
