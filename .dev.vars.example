@@ -1,0 +1,7 @@
+# Optional local overrides. The committed Wrangler configuration already runs
+# the credential-free deterministic fallback, so this file is not required.
+DIRECTOR_DEMO_MODE=1
+
+# Optional live-provider development only. Never commit real values.
+GEMINI_API_KEY=
+OPENAI_API_KEY=

@@ -1,0 +1,44 @@
+{
+  "name": "director-open",
+  "private": true,
+  "version": "0.3.1",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm build && concurrently -k -n web,api -c blue,green \"vite\" \"wrangler dev --port 8787 --local\"",
+    "dev:web": "vite",
+    "dev:api": "wrangler dev --port 8787 --local",
+    "build": "vite build",
+    "preview": "pnpm build && wrangler dev --port 8787 --local",
+    "worker:types": "wrangler types --env-file wrangler.types.vars",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.worker.json",
+    "test": "vitest run",
+    "verify": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "0.12.15",
+    "@xyflow/react": "^12.10.0",
+    "lucide-react": "^0.554.0",
+    "openai": "^6.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260719.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^5.1.2",
+    "concurrently": "^9.2.1",
+    "jsdom": "^27.2.0",
+    "typescript": "^5.5.3",
+    "vite": "^7.3.0",
+    "vitest": "^4.0.10",
+    "wrangler": "^4.41.0"
+  },
+  "packageManager": "pnpm@11.9.0"
+}
