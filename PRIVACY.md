@@ -1,27 +1,26 @@
-# Privacy boundary
+# Privacy
 
-Director Open is a standalone, local-first application. It has no production database, user-account system, remote image library, corpus search, image proxy, or private service binding.
+Director Open is local-first by architecture: images, audio, previews, generated frames, and rendered video stay inside the browser on the device where they were selected.
 
-## Repository policy
+## Where data lives
 
-The repository may contain source code, public package dependencies, lockfiles, schemas, tests, documentation, and empty configuration examples. It must not contain production environment values, provider credentials, tokens, account identifiers, private URLs, user data, or private media.
+- The active project is stored in browser IndexedDB. This includes the timeline, actions, settings, conversation state, imported image blobs, and imported audio blobs.
+- Small schema-validated metadata, recovery summaries, and optional AI provider settings are also kept in browser local storage.
+- Browser object URLs are temporary views of local blobs. They are revoked when media is replaced or removed, when an output becomes stale, and when the editor unmounts.
+- FFmpeg.wasm receives local bytes only after the user confirms a render. Its temporary input and output files are deleted and its worker memory is terminated after success, failure, or cancellation.
 
-## Runtime data policy
+Browser storage is subject to the browser's quota and clearing controls. If IndexedDB cannot save a project, the interface reports that storage is full or unavailable rather than claiming the media was saved.
 
-- A Director turn contains bounded canvas state and compact metadata, not image binaries.
-- OpenAI and Gemini credentials are optional server-side Worker secrets. They are never sent to the browser or committed.
-- OpenAI Responses requests use `store: false`.
-- User identity is represented by a random session identifier, not an email or database identifier.
-- Reel planning sends bounded IDs and edit settings. Local filenames are replaced with neutral labels before model context is created.
-- Local image/audio bytes, browser `File` objects, object URLs, and rendered MP4 bytes never enter Worker or model requests.
-- Local media is held in browser memory and copied into FFmpeg.wasm's temporary in-memory filesystem only after render confirmation.
-- The app does not silently persist local media bytes or file handles.
-- Local imports are restricted to supported still-image and audio formats with bounded file, aggregate-input, clip-count, and timeline limits.
-- FFmpeg inputs and outputs are deleted from its in-memory filesystem after every attempt. Workers and temporary blob URLs are terminated or revoked on completion, cancellation, failure, or unmount.
-- The FFmpeg JavaScript/WebAssembly core is downloaded on demand from jsDelivr. Local media is never sent to that CDN.
+## Network boundary
 
-## Persistence and exports
+The Worker serves only the compiled static application. Every `/api/*` request is rejected; the Worker has no chat, AI, health, upload, media, analytics, or telemetry endpoint.
 
-Schema-validated project metadata, conversation, creative artifacts, and up to eight recovery snapshots are stored in browser-local storage. Local media bytes, object URLs, audio, and rendered downloads are deliberately excluded and must be selected again after refresh.
+The Worker has no media upload route, media store, image search, image proxy, or video endpoint. Director Open does not fetch remote demo media. The FFmpeg JavaScript/WebAssembly program is downloaded on demand from jsDelivr as executable application code; no user media is sent to that CDN.
 
-The final MP4 is exposed as a browser object URL. It is revoked when the edit changes or the editor unmounts.
+Optional AI calls go directly from the browser to the selected OpenAI, Anthropic, Google Gemini, or user-supplied OpenAI-compatible endpoint. Provider credentials are kept in one namespaced browser `localStorage` entry, rendered masked, and sent only in request headers to the selected provider—never in a URL, Worker request, log, repository file, or saved project.
+
+AI requests contain conversation text plus a compact, token-budgeted description of canvas IDs, selection, creative settings, effects, durations, aspect ratio, and recent validated actions. They do not contain image or audio bytes, `File` objects, object URLs, local filenames, generated frames, or rendered output. OpenAI requests set `store: false`. Each provider applies its own data-use and retention terms, so users should review their chosen provider's policy before enabling AI.
+
+## Analytics and identity
+
+Director Open includes no analytics, advertising tracker, user-account system, production database, or telemetry endpoint. Project session identifiers remain local and are not sent to the Worker or AI providers.

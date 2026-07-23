@@ -1,0 +1,181 @@
+.export-verify {
+  position: relative;
+  flex: 0 0 auto;
+  color: var(--director-text-3);
+  font-family: "SFMono-Regular", monospace;
+}
+
+.export-verify > summary {
+  min-height: 32px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--director-border);
+  border-radius: 8px;
+  background: rgba(255,255,255,.025);
+  color: var(--director-text-3);
+  font-size: 7px;
+  line-height: 1;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.export-verify > summary::-webkit-details-marker { display: none; }
+.export-verify > summary::after { content: "⌃"; color: var(--director-text-4); }
+.export-verify[open] > summary::after { content: "⌄"; }
+.export-verify > summary:focus-visible {
+  outline: 2px solid rgba(142,171,200,.72);
+  outline-offset: 2px;
+}
+
+.export-verify > summary small {
+  color: var(--director-text-4);
+  font: inherit;
+  text-transform: none;
+}
+
+.export-verify-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--director-sage-light);
+  box-shadow: 0 0 0 3px rgba(143,162,154,.1);
+}
+
+.export-verify[data-verdict="warn"] .export-verify-dot {
+  background: #d5ac76;
+  box-shadow: 0 0 0 3px rgba(213,172,118,.1);
+}
+
+.export-verify[data-verdict="fail"] .export-verify-dot {
+  background: var(--director-warn);
+  box-shadow: 0 0 0 3px rgba(213,138,118,.1);
+}
+
+.export-verify-popover {
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(390px, calc(100vh - 130px));
+  padding: 12px;
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  bottom: calc(100% + 9px);
+  display: grid;
+  gap: 9px;
+  overflow: hidden;
+  border: 1px solid rgba(142,171,200,.28);
+  border-radius: 11px;
+  background: rgba(13,13,18,.99);
+  box-shadow: 0 18px 52px rgba(0,0,0,.62);
+}
+
+.export-verify-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.export-verify-heading strong {
+  color: var(--director-text-2);
+  font-size: 9px;
+  letter-spacing: .04em;
+}
+
+.export-verify-heading span {
+  color: var(--director-text-4);
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.export-verify-note {
+  margin: 0;
+  color: var(--director-text-3);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.export-verify-table-scroll {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--director-hairline);
+  border-radius: 7px;
+}
+
+.export-verify table {
+  width: 100%;
+  min-width: 610px;
+  border-collapse: collapse;
+  color: var(--director-text-3);
+  font-size: 7px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.export-verify th,
+.export-verify td {
+  padding: 7px;
+  border-bottom: 1px solid var(--director-hairline);
+  vertical-align: top;
+}
+
+.export-verify thead th {
+  position: sticky;
+  top: 0;
+  background: #111117;
+  color: var(--director-text-4);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.export-verify tbody th {
+  color: var(--director-text-2);
+  font-weight: 600;
+}
+
+.export-verify tbody tr:last-child > * { border-bottom: 0; }
+.export-verify td code { color: var(--director-blue-bright); font: inherit; }
+
+.export-verify-result {
+  padding: 2px 5px;
+  border-radius: 99px;
+  background: rgba(143,162,154,.12);
+  color: var(--director-sage-light);
+  font-size: 6.5px;
+  text-transform: uppercase;
+}
+
+.export-verify tr[data-status="warn"] .export-verify-result {
+  background: rgba(213,172,118,.12);
+  color: #d5ac76;
+}
+
+.export-verify tr[data-status="fail"] .export-verify-result {
+  background: rgba(213,138,118,.12);
+  color: var(--director-warn);
+}
+
+.export-verify-download {
+  min-height: 29px;
+  padding: 0 9px;
+  justify-self: end;
+  border: 1px solid rgba(142,171,200,.34);
+  border-radius: 7px;
+  background: rgba(142,171,200,.1);
+  color: var(--director-blue-bright);
+  font: 7px/1 "SFMono-Regular", monospace;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .export-verify-popover {
+    position: fixed;
+    right: 16px;
+    bottom: 78px;
+  }
+}

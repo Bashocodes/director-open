@@ -1,8 +1,7 @@
 import { clamp01, effectStrength } from '../effectRecipes';
 import type {
   StructuralEffectFrameOptions,
-  StructuralEffectPlugin,
-} from '../structuralEffects';
+} from '../../../../plugins/types';
 
 export type GlitchBurstSlice = {
   top: number;
@@ -258,8 +257,13 @@ function renderEvent(
 }
 
 export const glitchBurstPlugin = {
-  id: 'glitch-burst',
-  renderFrame(sourceRgba, width, height, options) {
+  id: 'glitch-burst' as const,
+  renderFrame(
+    sourceRgba: Uint8ClampedArray,
+    width: number,
+    height: number,
+    options: StructuralEffectFrameOptions,
+  ) {
     if (effectStrength(options.intensity) <= 0 || options.phase <= 0) return sourceRgba.slice();
     const schedule = glitchBurstSchedule(width, height, options);
     const frameIndex = Math.max(0, Math.min(
@@ -271,4 +275,4 @@ export const glitchBurstPlugin = {
     );
     return event ? renderEvent(sourceRgba, width, height, event) : sourceRgba.slice();
   },
-} satisfies Omit<StructuralEffectPlugin, 'id'> & { id: 'glitch-burst' };
+};

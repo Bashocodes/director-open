@@ -14,6 +14,10 @@ export function imageExtensionFromMimeType(type: string | null | undefined) {
   return type ? IMAGE_TYPES.get(type.split(';', 1)[0].trim().toLowerCase()) || null : null;
 }
 
+export function isGeneratedImageUrl(url: string) {
+  return /^data:image\/(?:jpeg|png|webp);base64,/i.test(url);
+}
+
 const AUDIO_TYPES = new Set([
   'audio/aac',
   'audio/flac',
@@ -68,9 +72,17 @@ export function validateLocalAudio(file: File) {
 export function assertKnownMediaLimits(project: ReelProject) {
   let knownBytes = 0;
   for (const clip of project.clips) {
-    // Remote references may use extensionless same-origin proxy URLs. Their
-    // response MIME type is validated before bytes enter FFmpeg.
-    if (!clip.sourceFile) continue;
+    if (!clip.sourceFile) {
+      if (isGeneratedImageUrl(clip.imageUrl)) {
+        const generatedBytes = Math.ceil(clip.imageUrl.length * 0.75);
+        if (generatedBytes > MAX_IMAGE_BYTES) {
+          throw new Error(`“${clip.title}” cannot be rendered. Each image must be 64 MB or smaller.`);
+        }
+        knownBytes += generatedBytes;
+        continue;
+      }
+      throw new Error(`“${clip.title}” is missing its local source file. Add the image again before rendering.`);
+    }
     const error = validateLocalImage(clip.sourceFile);
     if (error) throw new Error(`“${clip.title}” cannot be rendered. ${error}`);
     knownBytes += clip.sourceFile.size;
@@ -105,6 +117,7 @@ export function reelProjectFingerprint(project: ReelProject) {
       transitionDuration: clip.transitionDuration,
       motion: clip.motion,
       intensity: clip.intensity,
+      pluginParams: clip.pluginParams || {},
       caption: clip.caption,
     })),
     audio: project.audio ? [
@@ -125,11 +138,17 @@ export function revokeProjectObjectUrls(project: ReelProject | null) {
   if (project.audio) URL.revokeObjectURL(project.audio.url);
 }
 
-export function revokeRemovedProjectObjectUrls(previous: ReelProject | null, next: ReelProject | null) {
+export function revokeRemovedProjectObjectUrls(
+  previous: ReelProject | null,
+  next: ReelProject | null,
+  retainedObjectUrls: ReadonlySet<string> = new Set(),
+) {
   if (!previous) return;
   const retainedClipUrls = new Set(next?.clips.filter((clip) => clip.sourceFile).map((clip) => clip.imageUrl) || []);
   for (const clip of previous.clips) {
-    if (clip.sourceFile && !retainedClipUrls.has(clip.imageUrl)) URL.revokeObjectURL(clip.imageUrl);
+    if (clip.sourceFile && !retainedClipUrls.has(clip.imageUrl) && !retainedObjectUrls.has(clip.imageUrl)) {
+      URL.revokeObjectURL(clip.imageUrl);
+    }
   }
   if (previous.audio && previous.audio.url !== next?.audio?.url) URL.revokeObjectURL(previous.audio.url);
 }

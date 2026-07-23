@@ -1,4 +1,4 @@
-# Director V3.0 — browser-local reel editing and rendering
+# Browser-local reel editing and rendering
 
 ## Product contract
 
@@ -16,7 +16,7 @@ The agent plans and applies editing operations. The browser owns media, preview,
 6. **Live preview** — Canvas draws the active clips, virtual camera movement, transitions, captions, and structural effects at interactive speed. JavaScript structural effects call the same deterministic `renderFrame(sourceRgba, width, height, { phase, progress, seed, intensity })` plugins used to prepare an export.
 7. **Final render** — FFmpeg.wasm runs inside its own Web Worker and receives media through an in-memory filesystem. The browser prepares deterministic structural-effect PNG sequences at half the output frame rate, FFmpeg duplicates them to the requested frame rate, then applies camera motion, CRT scan or motion echo, grades, composition, and encoding to produce a downloadable H.264/AAC MP4.
 8. **Cleanup** — temporary input, caption-overlay, and output files are deleted from the FFmpeg filesystem, then the Worker and generated core blob URLs are terminated/revoked after success, cancellation, or failure.
-9. **Project recovery** — schema-validated browser-local storage auto-saves the active project and keeps up to eight recovery snapshots. Canvas state, conversation, creative artifacts, and remote-reference edit metadata survive refresh; local `File` objects, blob URLs, audio, and rendered downloads do not. Retired visual-effect IDs are normalized on load and the restored project carries a visible migration receipt rather than silently changing the edit.
+9. **Project recovery** — IndexedDB auto-saves the active project, including imported image/audio bytes, while schema-validated browser-local metadata keeps up to eight recovery summaries. Canvas state, conversation, creative artifacts, reel settings, and active-project media survive refresh. Temporary object URLs and rendered downloads do not. Retired visual-effect IDs are normalized on load and the restored project carries a visible migration receipt rather than silently changing the edit.
 
 No local image, audio, or rendered-video bytes, `File` objects, object URLs, or local filenames enter Director/model requests. Reel context contains bounded IDs and edit settings, including user-authored caption text. A local file's title is neutralized to `Local image N` before context is created.
 
@@ -63,7 +63,7 @@ Caption layout is implemented once for preview and export: normalized whitespace
 
 ## Rendering behavior
 
-FFmpeg is not part of the initial JavaScript bundle. The `@ffmpeg/ffmpeg` wrapper is code-split, while the exact single-thread `@ffmpeg/core` 0.12.10 JavaScript and WebAssembly assets are downloaded from jsDelivr only after **Render on this device** is confirmed. The download is converted to temporary blob URLs for the Worker and those URLs are revoked after the attempt. Browser HTTP caching may avoid a repeat transfer, but V3.0 does not install its own service worker or offline cache.
+FFmpeg is not part of the initial JavaScript bundle. The `@ffmpeg/ffmpeg` wrapper is code-split, while the exact single-thread `@ffmpeg/core` 0.12.10 JavaScript and WebAssembly assets are downloaded from jsDelivr only after **Render on this device** is confirmed. The download is converted to temporary blob URLs for the Worker and those URLs are revoked after the attempt. Browser HTTP caching may avoid a repeat transfer, but Director Open does not install its own service worker or offline cache.
 
 The fallback Worker also adds the isolation headers that a future opt-in multi-thread engine will require:
 
@@ -73,46 +73,46 @@ Cross-Origin-Embedder-Policy: credentialless
 Permissions-Policy: cross-origin-isolated=(self)
 ```
 
-The ffmpeg.wasm multi-thread core was not made the V3.0 default because end-to-end testing exposed a Chromium/Web Worker combination that could stall after H.264 stream setup. The presence of `SharedArrayBuffer` is not treated as proof that the path is dependable. Multi-threading may return only as an explicitly experimental mode with a watchdog, automatic termination, tested stable-core fallback, honest UI wording, and cross-browser verification. Output settings are the same; this engine choice changes speed, not the requested grade or resolution.
+The ffmpeg.wasm multi-thread core is not the default because end-to-end testing exposed a Chromium/Web Worker combination that could stall after H.264 stream setup. The presence of `SharedArrayBuffer` is not treated as proof that the path is dependable. Multi-threading may return only as an explicitly experimental mode with a watchdog, automatic termination, tested stable-core fallback, honest UI wording, and cross-browser verification. Output settings are the same; this engine choice changes speed, not the requested grade or resolution.
 
-The current H.264 pipeline uses `libx264`, `yuv420p`, `+faststart`, the `veryfast` preset at every tier, a CRF of 24/19/16/12 for draft/balanced/high/maximum, and optional AAC audio at 128/192 kbps. Texture-critical renders add x264's grain tuning so fine streaks and dither are less likely to be smoothed away. Maximum keeps the 1080p frame at the lowest compression and is therefore intentionally slower and usually larger even though the preset is unchanged. Moving stills are first scaled to a 1.18× working frame, animated as one continuous `zoompan` sequence with integer-aligned coordinates, then downscaled to the requested output. That sequence prevents fractional crop quantization from appearing as export-only shake. Music loops and is trimmed with the video; V3.0 does not yet expose volume or fades.
+The current H.264 pipeline uses `libx264`, `yuv420p`, `+faststart`, the `veryfast` preset at every tier, a CRF of 24/19/16/12 for draft/balanced/high/maximum, and optional AAC audio at 128/192 kbps. Texture-critical renders add x264's grain tuning so fine streaks and dither are less likely to be smoothed away. Maximum keeps the 1080p frame at the lowest compression and is therefore intentionally slower and usually larger even though the preset is unchanged. Moving stills are first scaled to a 1.18× working frame, animated as one continuous `zoompan` sequence with integer-aligned coordinates, then downscaled to the requested output. That sequence prevents fractional crop quantization from appearing as export-only shake. Music loops and is trimmed with the video; Director Open does not yet expose volume or fades.
 
 ## Reliability and resource boundaries
 
 - Maximum 16 still-image clips, 12 seconds per clip, and a 90-second compiled timeline after transition overlaps are applied.
 - Maximum 64 MB per image, 128 MB for a local audio file, and 256 MB aggregate input written to the in-memory FFmpeg filesystem. Caption overlays count toward the aggregate during preparation.
 - Local images are allowlisted as JPEG, PNG, or WebP. Local audio is allowlisted as MP3, M4A/AAC, WAV, FLAC, Ogg, or WebM.
-- Remote reference images are fetched with credentials omitted and CORS enabled. Director checks HTTP status, rejects unsupported declared content types, reads response streams with a 64 MB cap even when `Content-Length` is absent or dishonest, and reports actionable CORS/type/size errors.
+- Remote media is rejected at the local-media boundary. Render inputs must resolve to browser-owned `File`/`Blob` data or locally generated frames; the Worker never receives, stores, fetches, or proxies them.
 - Dynamic wrapper loading, both core downloads, and engine initialization share one abortable 90-second watchdog. FFmpeg execution has a separate duration-scaled timeout from two to fifteen minutes for ordinary edits and five to twenty minutes for premium mask effects, and remains user-cancellable.
 - Each render has an ownership token. Cancellation enters a stopping state and retry becomes available only after the prior promise settles, preventing callbacks from an old Worker from updating a newer render.
 - A render fingerprint covers object-URL media identity and all visible project settings. Any later edit revokes a completed output, and an in-flight job whose fingerprint no longer matches is discarded instead of offering a stale MP4.
-- Director checks for a minimum output size and MP4 `ftyp` signature before enabling download. This catches missing or obviously incomplete output; it is a lightweight structural check, not a full decode/conformance analysis.
+- After every render, Director runs its bounded ISO-BMFF parser over the output bytes and reports container structure, tracks, codecs, dimensions, duration, frame evidence, and file-size sanity against the compiled project. Failed checks inform the user but never block the MP4 download.
 - Device-memory and logical-core hints produce an honest 1080p warning on constrained devices. These browser hints are approximate and are not a guarantee of render success.
 
 ## Integration requirements
 
-- Serve the application and Worker APIs from the `/director` base path.
-- Preserve same-origin access for application assets and CORS-enabled access for any user-chosen remote images that may be rendered.
+- Serve the compiled application from the `/director` base path; the Worker is static-only and rejects `/api/*`.
+- Accept render images only from browser-local `File` objects and their blob URLs; remote image inputs are outside the trust boundary.
 - Preserve the isolation headers above for a future opt-in multi-thread export mode.
 - Audit authentication popups and third-party embeds before enabling `Cross-Origin-Opener-Policy` on the production route.
 - Keep the single-thread engine as the dependable default even when `SharedArrayBuffer` is exposed.
-- Keep local `File` objects, object URLs, filenames, and media bytes out of server/model state and persistence payloads.
+- Keep local `File` objects, object URLs, filenames, and media bytes out of Worker and AI-provider requests. IndexedDB is the deliberate browser-local persistence boundary for imported media blobs.
 - Keep the Content Security Policy compatible with same-origin application assets, browser blob Workers/media, and the exact jsDelivr core origin while it remains a runtime dependency.
 - Complete FFmpeg/libx264 licensing review before commercial distribution.
 
 ## Preview-to-export boundary
 
-The shared timeline, caption routines, structural-effect plugins, absolute-seconds envelope, and seeded frame sampling make timing, clip order, transition duration, captions, project dimensions, frame rate, effects, and motions deterministic inputs to both preview and export. JavaScript structural effects share their pixel renderer, while CRT scan, motion echo, transitions, and final encoding remain FFmpeg operations; Canvas is therefore a close editing preview rather than a promise of pixel-identical FFmpeg output. The encoded MP4 is authoritative. CORS behavior is also stricter at render time because the browser must read source bytes, not merely display an `<img>`.
+The shared timeline, caption routines, structural-effect plugins, absolute-seconds envelope, and seeded frame sampling make timing, clip order, transition duration, captions, project dimensions, frame rate, effects, and motions deterministic inputs to both preview and export. JavaScript structural effects share their pixel renderer, while CRT scan, motion echo, transitions, and final encoding remain FFmpeg operations; Canvas is therefore a close editing preview rather than a promise of pixel-identical FFmpeg output. The encoded MP4 and its verification report are authoritative.
 
-## Honest V3.0 boundary and roadmap
+## Current boundary and roadmap
 
-This is a coherent still-image-and-music reel editor, not a browser clone of Premiere Pro or After Effects. It ships the complete architectural path from chat to an accountable executable edit to a real MP4, plus browser-local metadata recovery. It does **not** currently provide video-clip editing, waveforms or beat detection, audio volume/fades, multilayer composition, keyframes, masks, true HDR output, undo/redo, durable private-media/file-handle persistence, hardware-accelerated WebCodecs export, an offline FFmpeg core, or pixel-identical transition preview.
+This is a coherent still-image-and-music reel editor, not a browser clone of Premiere Pro or After Effects. It ships the complete architectural path from chat to an accountable executable edit to a real MP4, plus browser-local project and media recovery through IndexedDB. It does **not** currently provide video-clip editing, waveforms or beat detection, audio volume/fades, multilayer composition, keyframes, masks, true HDR output, undo/redo, persistent File System Access handles, hardware-accelerated WebCodecs export, an offline FFmpeg core, or pixel-identical transition preview.
 
 Reasonable next increments are:
 
 1. Video-clip decode, trim, and speed controls through WebCodecs with FFmpeg compatibility fallback.
 2. Audio waveform, beat detection, beat snapping, fades, and per-clip sound.
 3. Multi-layer overlays, masks, keyframes, text templates, logos, and safe-area guides.
-4. Bounded undo/redo command history and opt-in IndexedDB/file-handle persistence with explicit browser permissions and no silent private-media storage.
+4. Bounded undo/redo command history and explicit browser-storage management controls.
 5. WebCodecs hardware-accelerated export with FFmpeg reserved for filters, muxing, and unsupported codecs.
 6. A reduced, self-hosted and license-reviewed FFmpeg core containing only the decoders, filters, muxers, and encoders Director actually uses. The current exact core is larger than Cloudflare's ordinary single static-asset limit, so this needs a deliberate packaging/delivery design rather than a cosmetic URL change.

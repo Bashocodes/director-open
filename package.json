@@ -1,27 +1,30 @@
 {
   "name": "director-open",
+  "description": "A local-first reel studio that humans and AI agents can both drive — your media never leaves the browser.",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.1.0-alpha.0",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "pnpm build && concurrently -k -n web,api -c blue,green \"vite\" \"wrangler dev --port 8787 --local\"",
-    "dev:web": "vite",
-    "dev:api": "wrangler dev --port 8787 --local",
-    "build": "vite build",
-    "preview": "pnpm build && wrangler dev --port 8787 --local",
+    "dev": "pnpm build && concurrently -k -n web,worker -c blue,green \"vite --port 5190 --strictPort\" \"wrangler dev --port 8790 --local\"",
+    "dev:web": "vite --port 5190 --strictPort",
+    "dev:worker": "wrangler dev --port 8790 --local",
+    "build": "vite build && pnpm --filter director-mcp build",
+    "preview": "pnpm build && wrangler dev --port 8790 --local",
+    "deploy": "pnpm build && wrangler deploy",
+    "deploy:dry-run": "pnpm build && wrangler deploy --dry-run",
     "worker:types": "wrangler types --env-file wrangler.types.vars",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.worker.json",
-    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.worker.json && pnpm --filter director-mcp typecheck",
+    "test": "vitest run && pnpm --filter director-mcp test",
     "verify": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "0.12.15",
     "@xyflow/react": "^12.10.0",
     "lucide-react": "^0.554.0",
-    "openai": "^6.16.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zod": "^4.3.6"
@@ -34,6 +37,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^5.1.2",
     "concurrently": "^9.2.1",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^27.2.0",
     "typescript": "^5.5.3",
     "vite": "^7.3.0",

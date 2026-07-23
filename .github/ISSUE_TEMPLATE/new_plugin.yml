@@ -1,0 +1,79 @@
+name: New plugin
+description: Propose a deterministic effect, transition, or motion plugin
+title: "[Plugin]: "
+labels:
+  - plugin
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read PLUGINS.md before proposing a plugin. This form helps reserve a
+        stable ID and keep the contribution bounded.
+  - type: input
+    id: plugin_id
+    attributes:
+      label: Proposed plugin ID
+      description: Use a stable, descriptive ID that does not collide with the registry.
+      placeholder: chromatic-slide
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Plugin kind
+      options:
+        - effect
+        - transition
+        - motion
+    validations:
+      required: true
+  - type: input
+    id: display_name
+    attributes:
+      label: Display name
+      placeholder: Chromatic Slide
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Visual behavior
+      description: Describe the deterministic output and intended editing use.
+    validations:
+      required: true
+  - type: textarea
+    id: parameters
+    attributes:
+      label: Parameters and defaults
+      description: List each proposed parameter, default, range, and step or labels.
+      placeholder: |
+        intensity: default 0.5, range 0–1, step 0.05
+    validations:
+      required: true
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Render integration and performance
+      description: Note frame-transform/filtergraph needs and likely performance cost.
+    validations:
+      required: true
+  - type: textarea
+    id: testing
+    attributes:
+      label: Golden test plan
+      description: Describe the fixed inputs and fingerprint assertion.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Plugin contract checks
+      options:
+        - label: I read PLUGINS.md and searched the registry for ID collisions.
+          required: true
+        - label: The plugin will be deterministic for identical inputs and parameters.
+          required: true
+        - label: The contribution will include schema defaults, UI hints, and a golden test.
+          required: true
+        - label: The plugin requires no remote media or network access.
+          required: true

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BrowserFfmpegRenderer, buildFfmpegCommand, isValidMp4, renderTimeoutMs } from './ffmpegRenderer';
+import type { VerifyReport } from '../../../lib/verify';
+import { BrowserFfmpegRenderer, buildFfmpegCommand, renderTimeoutMs } from './ffmpegRenderer';
 import type { ReelProject } from './types';
 
 const ffmpegHarness = vi.hoisted(() => ({
@@ -104,8 +105,8 @@ const project: ReelProject = {
   audio: null,
   renderRequested: false,
   clips: [
-    { id: 'a', objectId: 'a', title: 'A', imageUrl: '/a.jpg', duration: 3, effect: 'hdr', visualEffect: 'none', transition: 'cut', transitionDuration: 0, motion: 'push-in', intensity: 70, caption: '' },
-    { id: 'b', objectId: 'b', title: 'B', imageUrl: '/b.jpg', duration: 4, effect: 'cinematic', visualEffect: 'none', transition: 'dip-black', transitionDuration: 0.5, motion: 'pull-out', intensity: 60, caption: 'Resolve' },
+    { id: 'a', objectId: 'a', title: 'A', imageUrl: 'blob:local-a', duration: 3, effect: 'hdr', visualEffect: 'none', transition: 'cut', transitionDuration: 0, motion: 'push-in', intensity: 70, caption: '' },
+    { id: 'b', objectId: 'b', title: 'B', imageUrl: 'blob:local-b', duration: 4, effect: 'cinematic', visualEffect: 'none', transition: 'dip-black', transitionDuration: 0.5, motion: 'pull-out', intensity: 60, caption: 'Resolve' },
   ],
 };
 
@@ -339,43 +340,41 @@ describe('FFmpeg reel command compiler', () => {
     expect(plan.filterGraph).not.toContain('mode=block');
   });
 
-  it('recognizes an MP4 file-type box and rejects incomplete output', () => {
-    const valid = new Uint8Array(32);
-    valid.set([0x66, 0x74, 0x79, 0x70], 4);
-    expect(isValidMp4(valid)).toBe(true);
-    expect(isValidMp4(new Uint8Array(31))).toBe(false);
-    valid[7] = 0;
-    expect(isValidMp4(valid)).toBe(false);
-  });
-
-  it('cleans the local engine, input files, output and core blob URLs after success', async () => {
+  it('keeps returned bytes downloadable while reporting container failures and cleaning resources', async () => {
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     const renderer = new BrowserFfmpegRenderer();
+    let verification: VerifyReport | null = null;
     const localProject = {
       ...project,
       clips: [{ ...project.clips[0], imageUrl: 'blob:image', sourceFile: localJpeg([1, 2, 3]) }],
     };
-    const blob = await renderer.render(localProject, { onStage: vi.fn(), onProgress: vi.fn() });
+    const blob = await renderer.render(localProject, {
+      onStage: vi.fn(),
+      onProgress: vi.fn(),
+      onVerify: (report) => { verification = report; },
+    });
     const engine = ffmpegHarness.instances[0];
     expect(blob.type).toBe('video/mp4');
+    expect(verification).toMatchObject({ verdict: 'fail' });
     expect(engine.deleted).toEqual(expect.arrayContaining(['image-0.jpg', 'director-open-reel.mp4']));
     expect(engine.terminated).toBe(true);
     expect(revoke).toHaveBeenCalledTimes(2);
     revoke.mockRestore();
   });
 
-  it('renders an extensionless remote image using its response MIME type', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
-      status: 200,
-      headers: { 'content-length': '3', 'content-type': 'image/png' },
-    })));
-    const remoteProject = {
+  it('rejects a clip without local bytes before loading any network dependency', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const missingLocalSource = {
       ...project,
       quality: 'draft' as const,
-      clips: [{ ...project.clips[0], imageUrl: '/director/api/assets/image/extensionless' }],
+      clips: [{ ...project.clips[0], sourceFile: undefined }],
     };
-    await new BrowserFfmpegRenderer().render(remoteProject, { onStage: vi.fn(), onProgress: vi.fn() });
-    expect(ffmpegHarness.instances[0].written).toContain('image-0.png');
+    await expect(new BrowserFfmpegRenderer().render(
+      missingLocalSource,
+      { onStage: vi.fn(), onProgress: vi.fn() },
+    )).rejects.toThrow(/missing its local source file/);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('retains source bytes when ffmpeg transfers and detaches its input buffer', async () => {

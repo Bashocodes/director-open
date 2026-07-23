@@ -1,21 +1,24 @@
 import type { FFmpeg } from '@ffmpeg/ffmpeg';
-import type { ReelEffect, ReelMotion, ReelTransition, ReelVisualEffect } from '../../../shared/directorSchemas';
+import {
+  verifyExport,
+  type VerifyReport,
+} from '../../../lib/verify';
+import {
+  pluginRegistry,
+  resolvedPluginParams,
+} from '../../../plugins/registry';
 import { reelDimensions } from './catalog';
 import { drawReelCaption } from './caption';
 import {
   assertKnownMediaLimits,
   imageExtension,
-  imageExtensionFromMimeType,
+  isGeneratedImageUrl,
   MAX_AGGREGATE_INPUT_BYTES,
-  MAX_IMAGE_BYTES,
 } from './media';
 import { compileReelTimeline, reelDuration } from './project';
 import { reelGradeStack, reelVisualEffectStack, type ReelClip, type ReelProject } from './types';
 import {
   effectSeed,
-  effectStrength,
-  mix,
-  opticalFfmpegRecipe,
   structuralEffectFps,
 } from './effectRecipes';
 import { makeStructuralEffectFrameSequence } from './structuralEffectEngine';
@@ -36,6 +39,7 @@ type RenderCallbacks = {
   onStage: (stage: 'loading' | 'preparing' | 'rendering', message: string) => void;
   onProgress: (progress: number) => void;
   onLog?: (message: string) => void;
+  onVerify?: (report: VerifyReport) => void;
 };
 
 type StructuralEffectInputIndexes = Array<number | null>;
@@ -47,22 +51,11 @@ export type FfmpegCommandPlan = {
   duration: number;
 };
 
-const HEAVY_VISUAL_EFFECTS = new Set<ReelVisualEffect>([
-  'pixel-sort',
-  'glitch-burst',
-  'crt-scan',
-  'halftone-reveal',
-  'ripple-drift',
-  'motion-echo',
-  'threshold-melt',
-]);
-const TEXTURE_CRITICAL_EFFECTS = new Set<ReelVisualEffect>([
-  'pixel-sort', 'crt-scan', 'halftone-reveal', 'threshold-melt',
-]);
-
 export function hasHeavyVisualEffects(project: ReelProject) {
   return project.clips.some((clip) =>
-    reelVisualEffectStack(clip).some((effect) => HEAVY_VISUAL_EFFECTS.has(effect)),
+    reelVisualEffectStack(clip).some((effect) => (
+      pluginRegistry.getEffect(effect, 'visual')?.heavy === true
+    )),
   );
 }
 
@@ -79,139 +72,44 @@ function fixed(value: number) {
   return Math.round(value * 1_000) / 1_000;
 }
 
-function gradeFilters(effect: ReelEffect, intensity: number) {
-  const amount = Math.min(100, Math.max(0, intensity)) / 100;
-  const mix = (low: number, high: number) => fixed(low + (high - low) * amount);
-  switch (effect) {
-    case 'cinematic':
-      return `curves=all='0/0 0.12/${mix(0.12, 0.095)} 0.5/${mix(0.5, 0.515)} 0.86/${mix(0.86, 0.895)} 1/1',`
-        + `colorbalance=rs=-${mix(0, 0.018)}:bs=${mix(0, 0.026)}:rh=${mix(0, 0.028)}:bh=-${mix(0, 0.018)},`
-        + `eq=saturation=${mix(0.995, 0.92)}:gamma=${mix(1, 0.985)},vignette=angle=${mix(0.26, 0.46)}`;
-    case 'hdr':
-      return `curves=all='0/0 0.12/${mix(0.12, 0.095)} 0.5/${mix(0.5, 0.525)} 0.82/${mix(0.82, 0.875)} 0.96/${mix(0.96, 0.975)} 1/1',`
-        + `eq=saturation=${mix(1.005, 1.085)}:gamma=${mix(1, 0.992)},unsharp=7:7:${mix(0.12, 0.52)}:5:5:0`;
-    case 'warm':
-      return `colorbalance=rs=${mix(0.008, 0.065)}:gs=${mix(0.003, 0.022)}:bs=-${mix(0.008, 0.045)},`
-        + `curves=all='0/0 0.2/${mix(0.2, 0.18)} 0.78/${mix(0.78, 0.82)} 1/1'`;
-    case 'cool':
-      return `colorbalance=rs=-${mix(0.008, 0.05)}:bs=${mix(0.01, 0.075)},`
-        + `curves=all='0/0 0.18/${mix(0.18, 0.155)} 0.8/${mix(0.8, 0.84)} 1/1',eq=saturation=${mix(1, 0.94)}`;
-    case 'mono':
-      return `hue=s=0,curves=all='0/0 0.18/${mix(0.18, 0.13)} 0.52/${mix(0.52, 0.55)} 0.84/${mix(0.84, 0.9)} 1/1'`;
-    case 'dream':
-      return `gblur=sigma=${mix(0.25, 2.4)},eq=saturation=${mix(0.98, 0.72)}:gamma=${mix(1.01, 1.11)}`;
-    case 'vignette':
-      return `vignette=angle=${mix(0.32, 0.82)}`;
-    case 'blur':
-      return `gblur=sigma=${mix(0.35, 9)}`;
-    case 'punch':
-      return `curves=all='0/0 0.16/${mix(0.155, 0.115)} 0.5/${mix(0.5, 0.515)} 0.86/${mix(0.86, 0.915)} 1/1',`
-        + `eq=saturation=${mix(1.005, 1.14)},unsharp=7:7:${mix(0.14, 0.64)}:5:5:0`;
-    case 'teal-orange':
-      return `colorbalance=rs=${mix(0.006, 0.045)}:gs=-${mix(0.002, 0.015)}:bs=${mix(0.006, 0.04)},`
-        + `curves=all='0/0 0.18/${mix(0.18, 0.145)} 0.82/${mix(0.82, 0.875)} 1/1',eq=saturation=${mix(1, 1.09)}`;
-    case 'vintage-film':
-      return `colorbalance=rs=${mix(0.006, 0.05)}:gs=${mix(0.003, 0.025)}:bs=-${mix(0.006, 0.04)},`
-        + `curves=all='0/${mix(0, 0.035)} 0.2/${mix(0.2, 0.215)} 0.8/${mix(0.8, 0.78)} 1/${mix(1, 0.96)}',`
-        + `eq=saturation=${mix(1, 0.82)},noise=alls=${mix(0, 5.5)}:allf=t`;
-    case 'glow':
-      return `gblur=sigma=${mix(0.05, 1.25)},eq=brightness=${mix(0, 0.035)}:gamma=${mix(1, 1.08)}:saturation=${mix(1, 1.08)}`;
-    case 'bleach-bypass':
-      return `curves=all='0/0 0.17/${mix(0.165, 0.105)} 0.5/${mix(0.5, 0.52)} 0.84/${mix(0.84, 0.92)} 1/1',`
-        + `eq=saturation=${mix(0.96, 0.56)},unsharp=5:5:${mix(0.1, 0.55)}:5:5:0`;
-    case 'clean':
-    default:
-      return 'null';
-  }
-}
-
-function appendCrtScanStage(options: {
-  filterParts: string[];
-  inputLabel: string;
-  outputLabel: string;
-  stageId: string;
-  clip: ReelClip;
-  fps: number;
-}) {
-  const { filterParts, inputLabel, outputLabel, stageId, clip, fps } = options;
-  const strength = effectStrength(clip.intensity);
-  const bandFraction = fixed(mix(0.06, 0.1, strength));
-  const brightness = fixed(mix(0.018, 0.055, strength));
-  const spacing = Math.max(3, Math.round(mix(7, 4, strength)));
-  const lineSpeed = Math.max(12, Math.round(mix(28, 72, strength)));
-  const lineOpacity = fixed(mix(0.035, 0.12, strength));
-  const bandTop = `mod(T*(H+H*${bandFraction})/2.5,H+H*${bandFraction})-H*${bandFraction}`;
-  const recipe = opticalFfmpegRecipe({ intensity: clip.intensity, duration: clip.duration, fps });
-  filterParts.push(
-    `[${inputLabel}]format=rgba,split=4`
-    + `[${stageId}-clean-rgba][${stageId}-base-rgba]`
-    + `[${stageId}-band-rgba][${stageId}-mask-rgba]`,
-  );
-  filterParts.push(`[${stageId}-clean-rgba]format=yuv444p[${stageId}-clean]`);
-  filterParts.push(`[${stageId}-base-rgba]format=yuv444p[${stageId}-base]`);
-  filterParts.push(
-    `[${stageId}-band-rgba]rgbashift=rh=1:bh=-1:edge=smear,`
-    + `crop=iw-2:ih:x='1+sin(2*PI*t*7)',scale=iw+2:ih,`
-    + `eq=brightness=${brightness},format=yuv444p[${stageId}-band]`,
-  );
-  filterParts.push(
-    `[${stageId}-mask-rgba]format=yuv444p,`
-    + `geq=lum='if(between(Y\\,${bandTop}\\,${bandTop}+H*${bandFraction})\\,255\\,0)':cb=128:cr=128`
-    + `[${stageId}-mask]`,
-  );
-  filterParts.push(
-    `[${stageId}-base][${stageId}-band][${stageId}-mask]maskedmerge,`
-    + `drawgrid=w=iw:h=${spacing}:y='mod(t*${lineSpeed},${spacing})':`
-    + `t=1:c=black@${lineOpacity}[${stageId}-crt]`,
-  );
-  filterParts.push(
-    `[${stageId}-clean][${stageId}-crt]blend=all_expr='${recipe.blend}'[${outputLabel}]`,
-  );
-}
-
-function appendMotionEchoStage(options: {
-  filterParts: string[];
-  inputLabel: string;
-  outputLabel: string;
-  stageId: string;
-  clip: ReelClip;
-  fps: number;
-}) {
-  const { filterParts, inputLabel, outputLabel, stageId, clip, fps } = options;
-  const decay = fixed(mix(0.86, 0.96, effectStrength(clip.intensity)));
-  const recipe = opticalFfmpegRecipe({ intensity: clip.intensity, duration: clip.duration, fps });
-  filterParts.push(
-    `[${inputLabel}]format=gbrp,split=2[${stageId}-clean][${stageId}-echo-source]`,
-  );
-  filterParts.push(`[${stageId}-echo-source]lagfun=decay=${decay}[${stageId}-trail]`);
-  filterParts.push(
-    `[${stageId}-clean][${stageId}-trail]blend=all_expr='${recipe.blend}',`
-    + `format=yuv444p[${outputLabel}]`,
-  );
-}
-
 function appendVisualEffectStage(options: {
   filterParts: string[];
   inputLabel: string;
   outputLabel: string;
   stageId: string;
   clip: ReelClip;
-  effect: ReelVisualEffect;
+  effect: string;
   fps: number;
 }) {
   const { filterParts, inputLabel, outputLabel, stageId, clip, effect, fps } = options;
-  if (effect === 'crt-scan') {
-    appendCrtScanStage({ filterParts, inputLabel, outputLabel, stageId, clip, fps });
-    return;
-  }
-  if (effect === 'motion-echo') {
-    appendMotionEchoStage({ filterParts, inputLabel, outputLabel, stageId, clip, fps });
+  const plugin = pluginRegistry.getEffect(effect, 'visual');
+  if (plugin?.ffmpegFiltergraph) {
+    filterParts.push(...plugin.ffmpegFiltergraph({
+      inputLabel,
+      outputLabel,
+      stageId,
+      duration: clip.duration,
+      fps,
+      intensity: clip.intensity,
+      params: resolvedPluginParams(
+        plugin,
+        clip.pluginParams?.[effect],
+        { intensity: clip.intensity },
+      ),
+    }));
     return;
   }
   filterParts.push(`[${inputLabel}]null[${outputLabel}]`);
 }
 
-function motionFilters(motion: ReelMotion, width: number, height: number, duration: number, fps: number) {
+function motionFilters(
+  motion: string,
+  width: number,
+  height: number,
+  duration: number,
+  fps: number,
+  params: Readonly<Record<string, unknown>> = {},
+) {
   const frames = Math.max(1, Math.round(duration * fps));
   const progressFrames = Math.max(1, frames - 1);
   const workWidth = Math.ceil(width * MOTION_OVERSCAN / 2) * 2;
@@ -224,7 +122,7 @@ function motionFilters(motion: ReelMotion, width: number, height: number, durati
   const base = `${singleFrame},scale=${workWidth}:${workHeight}:force_original_aspect_ratio=increase,`
     + `crop=${workWidth}:${workHeight},setsar=1`;
 
-  const expression = cameraFfmpegExpressions(motion, progressFrames);
+  const expression = cameraFfmpegExpressions(motion, progressFrames, params);
   const x = `trunc((iw-iw/zoom)*(${expression.focusX}))`;
   const y = `trunc((ih-ih/zoom)*(${expression.focusY}))`;
   return `${base},zoompan=z='${expression.zoom}':x='${x}':y='${y}':d=${frames}:s=${width}x${height}:fps=${fps}`;
@@ -235,11 +133,12 @@ function motionFilters(motion: ReelMotion, width: number, height: number, durati
  * to the output frame rate, keeping one decoded effect stream in memory.
  */
 function postCompositeMotionFilters(
-  motion: ReelMotion,
+  motion: string,
   width: number,
   height: number,
   duration: number,
   fps: number,
+  params: Readonly<Record<string, unknown>> = {},
 ) {
   if (motion === 'still') {
     return `scale=${width}:${height}:flags=lanczos,setsar=1,trim=duration=${duration},`
@@ -247,7 +146,7 @@ function postCompositeMotionFilters(
   }
   const frames = Math.max(1, Math.round(duration * fps));
   const progressFrames = Math.max(1, frames - 1);
-  const expression = cameraFfmpegExpressions(motion, progressFrames);
+  const expression = cameraFfmpegExpressions(motion, progressFrames, params);
   const x = `trunc((iw-iw/zoom)*(${expression.focusX}))`;
   const y = `trunc((ih-ih/zoom)*(${expression.focusY}))`;
   return `zoompan=z='${expression.zoom}':x='${x}':y='${y}':`
@@ -255,16 +154,15 @@ function postCompositeMotionFilters(
     + `settb=AVTB,setpts=PTS-STARTPTS`;
 }
 
-function xfadeName(transition: ReelTransition) {
-  const names: Record<Exclude<ReelTransition, 'cut'>, string> = {
-    crossfade: 'fade',
-    'dip-black': 'fadeblack',
-    'slide-left': 'slideleft',
-    'slide-right': 'slideright',
-    zoom: 'circleopen',
-    'soft-dissolve': 'dissolve',
-  };
-  return transition === 'cut' ? 'fade' : names[transition];
+function xfadeName(
+  transition: string,
+  params: Readonly<Record<string, unknown>> = {},
+  duration?: number,
+) {
+  const plugin = pluginRegistry.getTransition(transition) ?? pluginRegistry.getTransition('crossfade');
+  return plugin?.ffmpegTransition({
+    params: resolvedPluginParams(plugin, params, { duration }),
+  }) ?? 'fade';
 }
 
 export function buildFfmpegCommand(
@@ -299,7 +197,17 @@ export function buildFfmpegCommand(
     const sourceLabel = `clip-source-${index}`;
     const baseLabel = `clip-base-${index}`;
     const clipLabel = `clip-${index}`;
-    const grades = reelGradeStack(clip).map((effect) => gradeFilters(effect, clip.intensity)).join(',');
+    const grades = reelGradeStack(clip).map((effect) => {
+      const plugin = pluginRegistry.getEffect(effect, 'grade');
+      return plugin?.ffmpegGradeFilter?.({
+        intensity: clip.intensity,
+        params: resolvedPluginParams(
+          plugin,
+          clip.pluginParams?.[effect],
+          { intensity: clip.intensity },
+        ),
+      }) ?? 'null';
+    }).join(',');
     const visualEffects = reelVisualEffectStack(clip);
     const structuralEffects = structuralEffectIds(visualEffects);
     const structuralEffectInputIndex = structuralEffectInputIndexes[index];
@@ -309,12 +217,26 @@ export function buildFfmpegCommand(
       }
       filterParts.push(
         `[${structuralEffectInputIndex}:v]fps=${project.fps},`
-        + `${postCompositeMotionFilters(clip.motion, width, height, clip.duration, project.fps)},`
+        + `${postCompositeMotionFilters(
+          clip.motion,
+          width,
+          height,
+          clip.duration,
+          project.fps,
+          clip.pluginParams?.[clip.motion],
+        )},`
         + `format=yuv444p[${sourceLabel}]`,
       );
     } else {
       filterParts.push(
-        `[${index}:v]${motionFilters(clip.motion, width, height, clip.duration, project.fps)},`
+        `[${index}:v]${motionFilters(
+          clip.motion,
+          width,
+          height,
+          clip.duration,
+          project.fps,
+          clip.pluginParams?.[clip.motion],
+        )},`
         + `trim=duration=${clip.duration},settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[${sourceLabel}]`,
       );
     }
@@ -353,7 +275,11 @@ export function buildFfmpegCommand(
       filterParts.push(`[${activeLabel}][clip-${index}]concat=n=2:v=1:a=0[${nextLabel}]`);
     } else {
       filterParts.push(
-        `[${activeLabel}][clip-${index}]xfade=transition=${xfadeName(clip.transition)}:`
+        `[${activeLabel}][clip-${index}]xfade=transition=${xfadeName(
+          clip.transition,
+          clip.pluginParams?.[clip.transition],
+          clip.transitionDuration,
+        )}:`
         + `duration=${fixed(timelineClip.incomingOverlap)}:offset=${fixed(timelineClip.start)}[${nextLabel}]`,
       );
     }
@@ -364,7 +290,9 @@ export function buildFfmpegCommand(
   const outputName = 'director-open-reel.mp4';
   const crf = project.quality === 'maximum' ? '12' : project.quality === 'high' ? '16' : project.quality === 'balanced' ? '19' : '24';
   const preserveTexture = project.clips.some((clip) =>
-    reelVisualEffectStack(clip).some((effect) => TEXTURE_CRITICAL_EFFECTS.has(effect)),
+    reelVisualEffectStack(clip).some((effect) => (
+      pluginRegistry.getEffect(effect, 'visual')?.textureCritical === true
+    )),
   );
   args.push('-filter_complex', filterParts.join(';'), '-map', '[video-out]');
   if (audioInputIndex !== null) {
@@ -385,62 +313,24 @@ export function buildFfmpegCommand(
   return { args, filterGraph: filterParts.join(';'), outputName, duration: timeline.totalDuration };
 }
 
-async function readResponseWithLimit(response: Response, limit: number) {
-  const declared = Number(response.headers.get('content-length') || 0);
-  if (declared > limit) throw new Error('The remote image exceeds the 64 MB per-image safety limit.');
-  if (!response.body) {
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > limit) throw new Error('The remote image exceeds the 64 MB per-image safety limit.');
-    return bytes;
-  }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > limit) {
-        await reader.cancel();
-        throw new Error('The remote image exceeds the 64 MB per-image safety limit.');
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
-}
-
 async function readClipBytes(clip: ReelClip, signal: AbortSignal) {
-  if (clip.sourceFile) {
-    const bytes = new Uint8Array(await clip.sourceFile.arrayBuffer());
-    if (signal.aborted) throw new Error('Render cancelled.');
-    const extension = imageExtension(clip.sourceFile, clip.imageUrl);
-    if (!extension) throw new Error(`“${clip.title}” must be a JPEG, PNG, or WebP still image.`);
-    return { bytes, extension };
+  if (!clip.sourceFile) {
+    if (isGeneratedImageUrl(clip.imageUrl)) {
+      const [header, encoded = ''] = clip.imageUrl.split(',', 2);
+      const binary = atob(encoded);
+      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      const extension = header.includes('image/jpeg') ? 'jpg'
+        : header.includes('image/webp') ? 'webp' : 'png';
+      if (signal.aborted) throw new Error('Render cancelled.');
+      return { bytes, extension };
+    }
+    throw new Error(`“${clip.title}” is missing its local source file. Add the image again before rendering.`);
   }
-  let response: Response;
-  try {
-    response = await fetch(clip.imageUrl, { credentials: 'omit', mode: 'cors', signal });
-  } catch {
-    if (signal.aborted) throw new Error('Render cancelled.');
-    throw new Error(`“${clip.title}” could not be read. The image host must allow browser access (CORS).`);
-  }
-  if (!response.ok) throw new Error(`“${clip.title}” could not be read (HTTP ${response.status}).`);
-  const contentType = response.headers.get('content-type')?.split(';', 1)[0].toLowerCase() || '';
-  const extension = imageExtensionFromMimeType(contentType) || imageExtension(undefined, clip.imageUrl);
-  if (!extension) {
-    throw new Error(`“${clip.title}” uses an unsupported image type (${contentType}).`);
-  }
-  return { bytes: await readResponseWithLimit(response, MAX_IMAGE_BYTES), extension };
+  const bytes = new Uint8Array(await clip.sourceFile.arrayBuffer());
+  if (signal.aborted) throw new Error('Render cancelled.');
+  const extension = imageExtension(clip.sourceFile, clip.imageUrl);
+  if (!extension) throw new Error(`“${clip.title}” must be a JPEG, PNG, or WebP still image.`);
+  return { bytes, extension };
 }
 
 async function makeCaptionOverlay(clip: ReelClip, width: number, height: number) {
@@ -453,14 +343,6 @@ async function makeCaptionOverlay(clip: ReelClip, width: number, height: number)
   drawReelCaption(context, clip.caption, width, height);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
-}
-
-export function isValidMp4(bytes: Uint8Array) {
-  return bytes.byteLength >= 32
-    && bytes[4] === 0x66
-    && bytes[5] === 0x74
-    && bytes[6] === 0x79
-    && bytes[7] === 0x70;
 }
 
 export class BrowserFfmpegRenderer {
@@ -619,7 +501,7 @@ export class BrowserFfmpegRenderer {
 
   async render(project: ReelProject, callbacks: RenderCallbacks) {
     if (project.clips.length === 0) throw new Error('Add at least one image before rendering.');
-    if (reelDuration(project) > 90) throw new Error('Local renders are limited to 90 seconds in Director v2. Shorten the timeline and try again.');
+    if (reelDuration(project) > 90) throw new Error('Local renders are limited to 90 seconds in Director Open. Shorten the timeline and try again.');
     assertKnownMediaLimits(project);
     this.cancelled = false;
     this.lastLog = '';
@@ -683,6 +565,7 @@ export class BrowserFfmpegRenderer {
           effectSeeds: Object.fromEntries(
             effectIds.map((effectId) => [effectId, effectSeed(`${clip.id}:${effectId}`)]),
           ),
+          pluginParams: clip.pluginParams,
           duration: clip.duration,
           outputFps: project.fps,
           signal: abortController.signal,
@@ -748,8 +631,38 @@ export class BrowserFfmpegRenderer {
         throw new Error(`FFmpeg stopped with code ${exitCode}.${this.lastLog ? ` ${this.lastLog}` : ''}`);
       }
       const output = await ffmpeg.readFile(plan.outputName);
-      if (!(output instanceof Uint8Array) || !isValidMp4(output)) {
-        throw new Error('FFmpeg returned an invalid or incomplete MP4 file. Retry the local render.');
+      if (!(output instanceof Uint8Array)) {
+        throw new Error('FFmpeg did not return file bytes. Retry the local render.');
+      }
+      let verification: VerifyReport;
+      try {
+        verification = verifyExport(output, {
+          durationSeconds: plan.duration,
+          durationToleranceSeconds: 0.25,
+          width,
+          height,
+          fps: project.fps,
+          expectAudio: Boolean(project.audio),
+        });
+      } catch (error) {
+        verification = {
+          version: 1,
+          verdict: 'fail',
+          entries: [{
+            field: 'Verification',
+            value: null,
+            sourceBox: null,
+            status: 'fail',
+            message: `The local verifier could not inspect this file: ${
+              error instanceof Error ? error.message : 'unknown verifier error'
+            } — fail. The MP4 remains available to download.`,
+          }],
+        };
+      }
+      try {
+        callbacks.onVerify?.(verification);
+      } catch {
+        // Verification observers are informational and must never block output.
       }
       callbacks.onProgress(1);
       return new Blob([output.slice().buffer], { type: 'video/mp4' });

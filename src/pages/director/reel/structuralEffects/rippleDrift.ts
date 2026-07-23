@@ -1,5 +1,5 @@
 import { clamp01, deterministicHash, effectStrength, mix } from '../effectRecipes';
-import type { StructuralEffectFrameOptions } from '../structuralEffects';
+import type { StructuralEffectFrameOptions } from '../../../../plugins/types';
 
 const TAU = Math.PI * 2;
 const PEAK_INTENSITY_STRENGTH = effectStrength(90);

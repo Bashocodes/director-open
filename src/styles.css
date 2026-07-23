@@ -40,10 +40,23 @@ button { color: inherit; }
 .top-nav nav span.active { color: #a9c9e7; border-bottom-color: #8eabc8; }
 .nav-actions { margin-left: auto; display: flex; align-items: center; gap: 9px; }
 .local-first-badge {
-  padding: 7px 10px; border: 1px solid rgba(255,255,255,.075); border-radius: 999px;
+  padding: 7px 10px; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid rgba(143,162,154,.22); border-radius: 999px;
   background: rgba(255,255,255,.035); color: rgba(242,239,234,.42);
-  font-size: 9px; letter-spacing: .12em;
+  font-size: 9px; letter-spacing: .04em; cursor: pointer;
 }
+.local-first-badge:hover, .local-first-badge[aria-expanded="true"] {
+  border-color: rgba(143,162,154,.42); color: #b5c3bd; background: rgba(143,162,154,.08);
+}
+.local-privacy-panel {
+  position: absolute; z-index: 60; top: 54px; right: 20px; width: min(390px, calc(100vw - 32px));
+  padding: 13px 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 13px;
+  background: rgba(13,13,18,.98); box-shadow: 0 22px 58px rgba(0,0,0,.52);
+}
+.local-privacy-panel header { display: flex; align-items: center; justify-content: space-between; color: #b5c3bd; font-size: 11px; }
+.local-privacy-panel header button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: rgba(242,239,234,.48); cursor: pointer; }
+.local-privacy-panel header button:hover { background: rgba(255,255,255,.06); color: #f2efea; }
+.local-privacy-panel p { margin: 8px 0 0; color: rgba(242,239,234,.58); font-size: 10px; line-height: 1.5; }
 
 @media (max-width: 1180px) {
   .top-nav nav span { padding: 0 8px; }
@@ -53,5 +66,5 @@ button { color: inherit; }
   body { overflow: auto; }
   .app-shell { height: auto; min-height: 100%; overflow: visible; }
   .top-nav { gap: 14px; }
-  .local-first-badge { display: none; }
+  .local-first-badge { max-width: 240px; justify-content: center; text-align: left; font-size: 8px; }
 }

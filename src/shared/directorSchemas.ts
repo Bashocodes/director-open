@@ -178,14 +178,100 @@ export const DirectorCanvasActionSchema = z.object({
   exclusions: z.array(z.string().max(160)).max(24),
 }).strict();
 
+export const MAX_DIRECTOR_ACTIONS = 8;
+
+/** One executable edit crossing either the canvas or reel action boundary. */
+export const DirectorActionSchema = z.union([
+  DirectorCanvasActionSchema,
+  DirectorReelActionSchema,
+]);
+
+/**
+ * Compact, stable orientation data for humans, chat providers, and headless
+ * clients. Values come from the canonical Zod schemas rather than a parallel
+ * hand-maintained vocabulary.
+ */
+export const DIRECTOR_ACTION_SCHEMA_DESCRIPTION = {
+  format: 'director-actions-v1',
+  maxActions: MAX_DIRECTOR_ACTIONS,
+  envelope: 'strict-flat',
+  actionTypes: {
+    canvas: [...DirectorCanvasActionSchema.shape.type.options],
+    reel: [...DirectorReelActionSchema.shape.type.options],
+  },
+  fields: {
+    canvas: Object.keys(DirectorCanvasActionSchema.shape),
+    reel: Object.keys(DirectorReelActionSchema.shape),
+  },
+  enums: {
+    inheritanceChannels: [...InheritanceChannelSchema.options],
+    aspectRatios: [...ReelAspectRatioSchema.options],
+    fps: [24, 30],
+    qualities: [...ReelQualitySchema.options],
+    effects: [...ReelEffectSchema.options],
+    visualEffects: [...DirectorVisualEffectVocabularySchema.options],
+    transitions: [...ReelTransitionSchema.options],
+    motions: [...ReelMotionSchema.options],
+  },
+  limits: {
+    identifierCharacters: 160,
+    canvasObjectIds: 12,
+    reelObjectIds: 16,
+    reelClipIds: 16,
+    inheritanceChannels: 8,
+    exclusions: 24,
+    queryCharacters: 160,
+    searchCount: [1, 6],
+    goalCharacters: 1_000,
+    durationSeconds: [1, 12],
+    intensity: [0, 100],
+    captionCharacters: 180,
+  },
+  unavailableActions: {
+    search_and_add: 'Unavailable in the local-only project; upload media instead.',
+  },
+  fieldRule: 'Every strict flat-schema field is required; use null or [] when it does not apply.',
+} as const;
+
+export function describeDirectorActionSchema() {
+  return {
+    ...DIRECTOR_ACTION_SCHEMA_DESCRIPTION,
+    actionTypes: {
+      canvas: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.actionTypes.canvas],
+      reel: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.actionTypes.reel],
+    },
+    fields: {
+      canvas: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.fields.canvas],
+      reel: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.fields.reel],
+    },
+    enums: {
+      inheritanceChannels: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.inheritanceChannels],
+      aspectRatios: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.aspectRatios],
+      fps: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.fps],
+      qualities: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.qualities],
+      effects: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.effects],
+      visualEffects: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.visualEffects],
+      transitions: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.transitions],
+      motions: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.motions],
+    },
+    limits: {
+      ...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.limits,
+      searchCount: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.limits.searchCount],
+      durationSeconds: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.limits.durationSeconds],
+      intensity: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.limits.intensity],
+    },
+    unavailableActions: { ...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.unavailableActions },
+  };
+}
+
 export const DirectorResponseSchema = z.object({
   message: z.string(),
   mode: z.enum(['inspect', 'inherit', 'combine', 'create', 'animate', 'export']),
   directionContract: DirectionContractSchema.nullable(),
   sequence: StorySequenceSchema.nullable(),
   continuity: ContinuityReportSchema.nullable(),
-  canvasActions: z.array(DirectorCanvasActionSchema).max(8),
-  reelActions: z.array(DirectorReelActionSchema).max(8),
+  canvasActions: z.array(DirectorCanvasActionSchema).max(MAX_DIRECTOR_ACTIONS),
+  reelActions: z.array(DirectorReelActionSchema).max(MAX_DIRECTOR_ACTIONS),
   suggestedActions: z.array(z.string()).max(5),
 }).strict();
 
@@ -397,6 +483,7 @@ export type StoryBeat = z.infer<typeof StoryBeatSchema>;
 export type StorySequence = z.infer<typeof StorySequenceSchema>;
 export type ContinuityReport = z.infer<typeof ContinuityReportSchema>;
 export type DirectorCanvasAction = z.infer<typeof DirectorCanvasActionSchema>;
+export type DirectorAction = z.infer<typeof DirectorActionSchema>;
 export type ReelAspectRatio = z.infer<typeof ReelAspectRatioSchema>;
 export type ReelQuality = z.infer<typeof ReelQualitySchema>;
 export type ReelEffect = z.infer<typeof ReelEffectSchema>;

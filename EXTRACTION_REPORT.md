@@ -2,7 +2,7 @@
 
 ## Result
 
-Director Open is a fresh, standalone repository extracted from the finished source at commit `6f06cb34a8866965fc64e5d7b1e4824f4493a290`. The source worktree was clean before extraction and remained clean after all work.
+Director Open is a fresh, standalone repository extracted from a completed predecessor codebase. The source worktree was clean before extraction and remained clean after all work.
 
 The copied project has a neutral identity, no production route or account identifier, no private service binding, no remote corpus or image proxy, no bundled gallery, and no dependency on the legacy product's services. Its library starts empty and accepts browser-local JPEG, PNG, and WebP uploads.
 
@@ -16,19 +16,22 @@ The source contained 113 tracked files. The initial copy contained 112 files bec
 - `.wrangler/`
 - `coverage/`, `build/`, `out/`, `.vite/`, `.turbo/`, and `.cache/`
 - logs, TypeScript incremental-build files, and macOS metadata
-- `HACKATHON_COMPLIANCE.md`
+- the event-only compliance checklist
 
 Dependency installation later recreated ignored `node_modules/`. Verification temporarily generated ignored `dist/`, which was removed again before the initial commit.
 
 ## Files removed
 
-- `HACKATHON_COMPLIANCE.md` — excluded during the copy.
+- The event-only compliance checklist — excluded during the copy.
 - The legacy branded-logo component — removed with the branded navigation.
 - `src/worker/assets.ts` — removed the synthetic/public corpus adapter and image proxy.
 - `src/worker/assets.test.ts` — removed tests for the deleted adapter, service call, and signed image redirect.
 - `docs/ASSET_API_CONTRACT.md` — described the deleted asset service.
 - `docs/DEMO_SCRIPT.md` — event-specific deployment walkthrough.
 - `docs/MAIN_SITE_INTEGRATION.md` — described the deleted production route and private service boundary.
+- `src/worker/director.ts` and `src/worker/director.test.ts` — removed with the server-side AI proxy.
+- `src/worker/demo.ts` and `src/worker/demo.test.ts` — removed with the retired server fallback.
+- `src/lib/api.ts` and `src/lib/api.test.ts` — removed after all chat requests became browser-direct.
 - `public/demo/emotion-reference.jpg`
 - `public/demo/framing-reference.jpg`
 - `public/demo/material-reference.jpg`
@@ -58,12 +61,11 @@ The replacement is a neutral empty-library state with a browser-local image pick
 
 ### Service and deployment isolation
 
-- `wrangler.jsonc:1-21` — removed the production zone route, zone identifier, service binding, and corpus mode. The remaining bindings are static assets plus the credential-free demo flag.
-- `worker-configuration.d.ts:1-18` — regenerated from the stripped Wrangler configuration; only `ASSETS` and `DIRECTOR_DEMO_MODE` remain.
-- `src/worker/env.ts:1-9` — removed the private fetcher binding and corpus mode from the Worker environment.
-- `src/worker/index.ts:1-100` — removed the private upstream fetcher, production-host guard, asset search route, image proxy route, hosted-image CSP origins, and corpus provenance. Health now reports `local-library`.
-- `src/worker/director.ts:12-25,84-126,217-270` — neutral model instructions; search actions are filtered rather than executed; no asset adapter is imported or called; empty-library guidance replaces remote placement claims.
-- `src/worker/demo.ts:415-434` — deterministic reference-search behavior now invites local uploads and returns no search action.
+- `wrangler.jsonc` — removed the production zone route, zone identifier, service binding, corpus mode, provider vars, and unused Node compatibility flag. Static `ASSETS` is the only binding.
+- `worker-configuration.d.ts` — regenerated from the stripped Wrangler configuration; only `ASSETS` remains.
+- `src/worker/env.ts` — reduced to the generated static-assets environment.
+- `src/worker/index.ts` — removed all AI, health, asset-search, image-proxy, and upload paths. Every `/api/*` request now returns 404 before the static handler.
+- `src/lib/ai/` — browser-direct OpenAI, Anthropic, Google Gemini, and Custom/local adapters now own optional text-only AI calls.
 
 ### Browser UI and persistence
 
@@ -78,17 +80,17 @@ The replacement is a neutral empty-library state with a browser-local image pick
 ### Documentation
 
 - `README.md` — rewritten for the standalone local-first project.
-- `PRIVACY.md` — rewritten around local media, optional server-side provider credentials, and browser-local persistence.
+- `PRIVACY.md` — rewritten around local media, browser-only BYOK provider credentials, direct provider calls, and browser-local persistence.
 - `docs/DECISIONS.md` — replaced event/deployment decisions with the standalone architecture boundary.
-- `docs/DIRECTOR_V2_LOCAL_RENDERING.md:5,92-101` — local-upload product contract and neutral integration requirements.
+- `docs/LOCAL_RENDERING.md` — local-upload product contract and neutral integration requirements (renamed from the versioned extraction-era filename during release QA).
 - `docs/OPENAI_IMPLEMENTATION.md:1-31` — removed event evidence and remote corpus behavior; retained structured provider and privacy details.
 - `THIRD_PARTY_NOTICES.md:11` — licensing-review responsibility assigned to project maintainers.
 
-All event-name matches are gone outside this report's historical filename inventory. All production-domain URLs, hosted-image URLs, private binding names, route/account identifiers, and legacy branding shown to users were removed. One legacy source discriminator remains at `src/shared/directorSchemas.ts:355` because the shared action schema was explicitly required to remain unchanged; the application and persistence schemas no longer create or accept that source, so it is not a runtime service coupling.
+All event-name, prior-domain, and legacy-brand matches are gone. All hosted-image URLs, private binding names, route/account identifiers, and legacy branding shown to users were removed. The shared canvas-object source discriminator now matches the application and persistence schemas.
 
 ## Protected engine and schema boundary
 
-- `src/shared/directorSchemas.ts` is byte-for-byte unchanged.
+- `src/shared/directorSchemas.ts` retains the existing director action schemas; its unused legacy-branded canvas-source discriminator was removed during the publication sweep.
 - Reel changes are limited to the identity strings listed above and corresponding test fixtures/expectations. Timeline compilation, effects, preview, FFmpeg command planning, media validation, and persistence behavior are unchanged.
 - Persistence changes are limited to standalone storage identity and removal of deleted search/remote-asset state.
 
@@ -99,20 +101,21 @@ All event-name matches are gone outside this report's historical filename invent
 - Updated `TopNav.test.tsx` for the standalone identity and absence of external product links.
 - Updated `DirectorPage.test.tsx` to cover local uploads, null search context, browser-local recovery, and reel creation from uploaded images.
 - Updated `directorActions.test.ts` to verify that the retired search action cannot mutate local canvas state; selection, inheritance, removal, goal, and exclusion coverage remains.
-- Updated `demo.test.ts` to verify an upload invitation instead of an executable search action.
-- Updated `index.test.ts` to verify deleted asset/search endpoints return 404 and removed service-binding coverage.
+- Removed `demo.test.ts` and `director.test.ts` with the retired server AI implementation.
+- Updated `index.test.ts` to verify every Worker API path returns 404 and removed provider-binding coverage.
+- Added provider request-shaping, vault, canvas serializer, and action-response parser coverage under `src/lib/ai/`.
 - Removed the persisted live-search result test from `directorPersistence.test.ts`; all other recovery, migration, local-media omission, history, and bounds tests remain.
 - Updated neutral fixture labels, origins, and expected output names in affected tests.
 
-Final suite: **30 test files passed, 181 tests passed**.
+Current suite: **32 test files passed, 160 tests passed**.
 
 ## Secrets hygiene
 
 - No `.env`, `.env.*`, `.dev.vars`, certificate, or private-key file exists in the committed tree.
-- `.dev.vars.example` contains only the non-secret demo flag and empty provider placeholders.
+- No `.dev.vars` or `.dev.vars.example` file is needed; provider settings exist only in browser storage.
 - `wrangler.types.vars` is intentionally empty and contains no values.
 - High-confidence scans found no provider-key, cloud access-key, Git hosting token, Slack token, JWT, or private-key material.
-- A generic assignment scan found only explicit test placeholders such as `test-only`, `openai-test`, and `gemini-test`; none match real credential formats.
+- A generic assignment scan found only explicit test placeholders; none match real credential formats.
 - URL review found only localhost, reserved `.test` origins, public provider endpoints, jsDelivr, and public documentation/source links.
 - `wrangler.jsonc` contains no route, zone/account identifier, private URL, or service binding.
 
@@ -128,10 +131,10 @@ pnpm verify
 
 Results:
 
-- Install: lockfile unchanged; 239 packages installed/reused.
+- Install: lockfile refreshed after removing the server-side OpenAI SDK; 239 packages installed/reused.
 - Worker types: regenerated successfully from the stripped configuration.
 - Typecheck: browser and Worker TypeScript projects passed.
-- Tests: 30 files passed; 181 tests passed.
-- Build: 1,967 modules transformed; production build completed in 829 ms.
+- Tests: 32 files passed; 160 tests passed.
+- Build: 1,977 modules transformed; production build completed in 853 ms.
 - Build emitted one existing advisory that the main minified chunk is larger than 500 kB; it is a warning, not a verification failure.
 - Overall `pnpm verify`: **exit 0**.

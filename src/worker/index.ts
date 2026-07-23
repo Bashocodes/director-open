@@ -1,4 +1,3 @@
-import { handleDirector } from './director';
 import type { WorkerEnv } from './env';
 
 const STATIC_CONTENT_SECURITY_POLICY = [
@@ -10,10 +9,10 @@ const STATIC_CONTENT_SECURITY_POLICY = [
   "script-src 'self' blob: 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
-  "img-src 'self' blob: data:",
-  "media-src 'self' blob:",
+  "img-src blob: data:",
+  "media-src blob:",
   "worker-src 'self' blob:",
-  "connect-src 'self' blob: https://cdn.jsdelivr.net",
+  "connect-src 'self' blob: https: http://localhost:* http://127.0.0.1:*",
   "manifest-src 'self'",
 ].join('; ');
 
@@ -63,25 +62,6 @@ export default {
     const url = new URL(request.url);
     const pathname = withoutDirectorBase(url.pathname);
     try {
-      if (pathname === '/api/health' && request.method === 'GET') {
-        return apiJson({
-          ok: true,
-          experience: 'Director Open local creative workspace',
-          version: '3.0.1',
-          demoEnabled: env.DIRECTOR_DEMO_MODE === '1',
-          demoMode: env.DIRECTOR_DEMO_MODE === '1' && !env.GEMINI_API_KEY && !env.OPENAI_API_KEY,
-          provider: env.OPENAI_API_KEY ? 'openai' : env.GEMINI_API_KEY ? 'gemini' : env.DIRECTOR_DEMO_MODE === '1' ? 'demo' : 'unconfigured',
-          geminiConfigured: Boolean(env.GEMINI_API_KEY),
-          openaiConfigured: Boolean(env.OPENAI_API_KEY),
-          dataSource: 'local-library',
-          localReelRendering: true,
-          transactionalReelActions: true,
-          browserLocalProjectHistory: true,
-        });
-      }
-      if (pathname === '/api/director' && request.method === 'POST') {
-        return await handleDirector(request, env);
-      }
       if (pathname.startsWith('/api/')) return apiJson({ ok: false, error: 'Not found.' }, 404);
       if (request.method !== 'GET' && request.method !== 'HEAD') {
         return apiJson({ ok: false, error: 'Method not allowed.' }, 405);

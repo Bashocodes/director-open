@@ -51,7 +51,7 @@ const clip: ReelClip = {
   id: 'preview-clip',
   objectId: null,
   title: 'Preview',
-  imageUrl: '/preview.jpg',
+  imageUrl: 'blob:local-preview',
   duration: 6.4,
   effect: 'clean',
   visualEffect: 'pixel-sort',

@@ -27,7 +27,7 @@ export function DirectorLibrary({ onUpload }: Props) {
             <span><Images size={13} /> LOCAL LIBRARY</span>
             <strong>Your media</strong>
           </header>
-          <div className="corpus-results">
+          <div className="local-library-body">
             <div className="search-empty">
               <Upload size={20} />
               <p>Your library starts empty. Upload your own images to place private, browser-local references on the canvas.</p>

@@ -15,7 +15,12 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import type { ReelEffect, ReelMotion, ReelTransition, ReelVisualEffect } from '../../../shared/directorSchemas';
+import {
+  pluginRegistry,
+  resolvedPluginParams,
+  safePluginParams,
+} from '../../../plugins/registry';
+import type { VerifyReport } from '../../../lib/verify';
 import {
   REEL_FORMATS,
   REEL_GRADES,
@@ -33,7 +38,9 @@ import {
   validateLocalImage,
 } from './media';
 import { normalizeReelProject, reelDuration } from './project';
+import { ExportVerifyPanel } from './ExportVerifyPanel';
 import { ReelPreview } from './ReelPreview';
+import { PluginParamFields } from './PluginParamFields';
 import { ReelSelect } from './ReelSelect';
 import { ReelStackControl } from './ReelStackControl';
 import {
@@ -87,6 +94,7 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
   const lastRenderLogRef = useRef('');
   const renderStartedAtRef = useRef<number | null>(null);
   const [renderState, setRenderState] = useState<ReelRenderState>(INITIAL_RENDER_STATE);
+  const [verifyReport, setVerifyReport] = useState<VerifyReport | null>(null);
   const [mediaNotice, setMediaNotice] = useState('');
   const [showQualityWarning, setShowQualityWarning] = useState(false);
   const selectedClipIds = project.selectedClipIds.filter((id) => project.clips.some((clip) => clip.id === id));
@@ -110,6 +118,23 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
   const transitionClip = selectedClipIds
     .map((id) => project.clips.find((clip) => clip.id === id) || null)
     .find((clip) => clip && project.clips[0]?.id !== clip.id) || selectedClip;
+  const selectedEffectPlugins = selectedClip
+    ? [...reelVisualEffectStack(selectedClip), ...reelGradeStack(selectedClip)]
+      .filter((id, index, values) => values.indexOf(id) === index)
+      .flatMap((id) => {
+        const plugin = pluginRegistry.get(id);
+        return plugin?.kind === 'effect' ? [plugin] : [];
+      })
+    : [];
+  const sharedIntensityPluginId = selectedEffectPlugins.find((plugin) => (
+    Object.hasOwn(plugin.params.schema.shape, 'intensity')
+  ))?.id;
+  const selectedMotionPlugin = selectedClip
+    ? pluginRegistry.getMotion(selectedClip.motion)
+    : undefined;
+  const selectedTransitionPlugin = transitionClip
+    ? pluginRegistry.getTransition(transitionClip.transition)
+    : undefined;
 
   useEffect(() => () => {
     activeRenderRef.current?.renderer.cancel();
@@ -121,6 +146,7 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
     if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
     outputUrlRef.current = null;
     renderedFingerprintRef.current = null;
+    setVerifyReport(null);
     setRenderState(INITIAL_RENDER_STATE);
   }, [fingerprint]);
 
@@ -144,6 +170,34 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
     });
   }
 
+  function updatePluginParam(
+    id: string,
+    pluginId: string,
+    field: string,
+    value: unknown,
+    legacyField?: 'intensity' | 'transitionDuration',
+  ) {
+    const targets = selectedClipIds.includes(id) ? new Set(selectedClipIds) : new Set([id]);
+    commitProject({
+      ...project,
+      clips: project.clips.map((clip, index) => {
+        if (!targets.has(clip.id)) return clip;
+        if (legacyField === 'transitionDuration' && index === 0) return clip;
+        if (legacyField) return { ...clip, [legacyField]: value };
+        return {
+          ...clip,
+          pluginParams: {
+            ...clip.pluginParams,
+            [pluginId]: {
+              ...clip.pluginParams?.[pluginId],
+              [field]: value,
+            },
+          },
+        };
+      }),
+    });
+  }
+
   function selectClip(id: string, additive = false) {
     if (!additive) {
       onChange({ ...project, selectedClipIds: [id] });
@@ -164,8 +218,6 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
   }
 
   function removeClip(id: string) {
-    const clip = project.clips.find((item) => item.id === id);
-    if (clip?.sourceFile) URL.revokeObjectURL(clip.imageUrl);
     const clips = project.clips.filter((item) => item.id !== id);
     const selected = selectedClipIds.filter((selectedClipId) => selectedClipId !== id);
     const fallback = clips[Math.min(indexOfClip(project.clips, id), Math.max(0, clips.length - 1))];
@@ -229,7 +281,6 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
       return;
     }
     setMediaNotice('');
-    if (project.audio) URL.revokeObjectURL(project.audio.url);
     commitProject({ ...project, audio: nextAudio });
   }
 
@@ -238,6 +289,7 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
     if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
     outputUrlRef.current = null;
     renderedFingerprintRef.current = null;
+    setVerifyReport(null);
     setRenderState({ stage: 'loading', progress: 0, message: 'Starting local render…', outputUrl: null, outputBytes: null });
     const renderer = new BrowserFfmpegRenderer();
     const job = { id: ++renderIdRef.current, renderer, cancelled: false };
@@ -247,6 +299,7 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
     lastRenderLogRef.current = '';
     renderStartedAtRef.current = null;
     onChange({ ...project, renderRequested: false });
+    let completedVerifyReport: VerifyReport | null = null;
     try {
       const blob = await renderer.render(project, {
         onStage: (stage, message) => {
@@ -278,6 +331,9 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
             setRenderState((current) => ({ ...current, message: message.slice(-180) }));
           }
         },
+        onVerify: (report) => {
+          completedVerifyReport = report;
+        },
       });
       if (!ownsRender() || job.cancelled) return;
       if (renderFingerprint !== latestFingerprintRef.current) {
@@ -293,6 +349,17 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
       const outputUrl = URL.createObjectURL(blob);
       outputUrlRef.current = outputUrl;
       renderedFingerprintRef.current = renderFingerprint;
+      setVerifyReport(completedVerifyReport ?? {
+        version: 1,
+        verdict: 'fail',
+        entries: [{
+          field: 'Verification',
+          value: null,
+          sourceBox: null,
+          status: 'fail',
+          message: 'No verification report was returned — fail. The MP4 remains available to download.',
+        }],
+      });
       setRenderState({ stage: 'complete', progress: 1, message: 'Local MP4 ready.', outputUrl, outputBytes: blob.size });
     } catch (error) {
       if (!ownsRender()) return;
@@ -301,8 +368,10 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
         ? baseMessage
         : `${baseMessage} ${lastRenderLogRef.current}`;
       if (job.cancelled || message === 'Render cancelled.') {
+        setVerifyReport(null);
         setRenderState(INITIAL_RENDER_STATE);
       } else {
+        setVerifyReport(null);
         setRenderState({ stage: 'error', progress: 0, message, outputUrl: null, outputBytes: null });
       }
     } finally {
@@ -327,6 +396,7 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
     if (!job || job.cancelled) return;
     job.cancelled = true;
     job.renderer.cancel();
+    setVerifyReport(null);
     setRenderState((current) => ({ ...current, stage: 'cancelling', message: 'Stopping the local render safely…' }));
   }
 
@@ -369,8 +439,8 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
                 fallbackValue="clean"
                 options={REEL_GRADES}
                 onChange={(gradeStack) => updateClip(selectedClip.id, {
-                  effect: (gradeStack[0] || 'clean') as ReelEffect,
-                  gradeStack: gradeStack as ReelEffect[],
+                  effect: gradeStack[0] || 'clean',
+                  gradeStack,
                 })}
               />
               <ReelStackControl
@@ -380,19 +450,72 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
                 fallbackValue="none"
                 options={REEL_VISUAL_EFFECTS}
                 onChange={(visualEffectStack) => updateClip(selectedClip.id, {
-                  visualEffect: (visualEffectStack[0] || 'none') as ReelVisualEffect,
-                  visualEffectStack: visualEffectStack as ReelVisualEffect[],
+                  visualEffect: visualEffectStack[0] || 'none',
+                  visualEffectStack,
                 })}
               />
-              <label>Strength <b>{selectedClip.intensity}%</b><input type="range" min="0" max="100" value={selectedClip.intensity} onChange={(event) => updateClip(selectedClip.id, { intensity: Number(event.target.value) })} /></label>
-              <ReelSelect label="Camera move" value={selectedClip.motion} options={REEL_MOTIONS} onChange={(motion) => updateClip(selectedClip.id, { motion: motion as ReelMotion })} />
+              {selectedEffectPlugins.map((plugin) => (
+                <PluginParamFields
+                  key={plugin.id}
+                  plugin={plugin}
+                  values={resolvedPluginParams(
+                    plugin,
+                    selectedClip.pluginParams?.[plugin.id],
+                    { intensity: selectedClip.intensity },
+                  )}
+                  excludeFields={plugin.id === sharedIntensityPluginId ? [] : ['intensity']}
+                  onChange={(field, value) => updatePluginParam(
+                    selectedClip.id,
+                    plugin.id,
+                    field,
+                    value,
+                    field === 'intensity' ? 'intensity' : undefined,
+                  )}
+                />
+              ))}
+              <ReelSelect label="Camera move" value={selectedClip.motion} options={REEL_MOTIONS} onChange={(motion) => updateClip(selectedClip.id, { motion })} />
+              <PluginParamFields
+                plugin={selectedMotionPlugin}
+                values={selectedClip.pluginParams?.[selectedClip.motion]}
+                onChange={(field, value) => updatePluginParam(
+                  selectedClip.id,
+                  selectedClip.motion,
+                  field,
+                  value,
+                )}
+              />
               <ReelSelect label="Transition" value={transitionClip?.transition || 'cut'} options={REEL_TRANSITIONS} disabled={!hasEditableTransitionTarget} onChange={(nextTransition) => {
-                const transition = nextTransition as ReelTransition;
-                updateClip(transitionClip?.id || selectedClip.id, { transition, transitionDuration: transition === 'cut' ? 0 : Math.max(transitionClip?.transitionDuration || 0, 0.45) });
+                const transition = nextTransition;
+                const plugin = pluginRegistry.getTransition(transition);
+                const defaults = plugin ? safePluginParams(plugin) : {};
+                const defaultDuration = typeof defaults.duration === 'number' ? defaults.duration : 0.45;
+                updateClip(transitionClip?.id || selectedClip.id, {
+                  transition,
+                  transitionDuration: transition === 'cut'
+                    ? 0
+                    : Math.max(transitionClip?.transitionDuration || 0, defaultDuration),
+                });
               }} />
               <div className="clip-number-row">
                 <label>Seconds<input type="number" min="1" max="12" step="0.1" value={selectedClip.duration} onChange={(event) => updateClip(selectedClip.id, { duration: Math.min(12, Math.max(1, Number(event.target.value))), durationWasUserSet: true })} /></label>
-                <label>Blend<input type="number" min="0" max="2" step="0.05" disabled={transitionClip?.transition === 'cut' || !hasEditableTransitionTarget} value={transitionClip?.transitionDuration || 0} onChange={(event) => updateClip(transitionClip?.id || selectedClip.id, { transitionDuration: Math.min(2, Math.max(0, Number(event.target.value))) })} /></label>
+                <PluginParamFields
+                  plugin={selectedTransitionPlugin}
+                  values={transitionClip && selectedTransitionPlugin
+                    ? resolvedPluginParams(
+                      selectedTransitionPlugin,
+                      transitionClip.pluginParams?.[transitionClip.transition],
+                      { duration: transitionClip.transitionDuration },
+                    )
+                    : {}}
+                  disabled={transitionClip?.transition === 'cut' || !hasEditableTransitionTarget}
+                  onChange={(field, value) => updatePluginParam(
+                    transitionClip?.id || selectedClip.id,
+                    selectedTransitionPlugin?.id || '',
+                    field,
+                    value,
+                    field === 'duration' ? 'transitionDuration' : undefined,
+                  )}
+                />
               </div>
               <label>Caption<input type="text" maxLength={180} value={selectedClip.caption} placeholder="Optional on-screen line" onChange={(event) => updateClip(selectedClip.id, { caption: event.target.value })} /></label>
             </div>
@@ -407,7 +530,7 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
           {project.clips.length > 1 && <button type="button" onClick={() => onChange({ ...project, selectedClipIds: project.clips.map((clip) => clip.id) })}>Select all</button>}
           <label className="media-picker" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') event.currentTarget.querySelector('input')?.click(); }}><ImagePlus size={13} /> Add local images<input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple onChange={(event) => { addLocalImages(event.target.files); event.target.value = ''; }} /></label>
           <label className="media-picker" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') event.currentTarget.querySelector('input')?.click(); }}><Music size={13} /> {project.audio?.name || 'Add local music'}<input type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/flac,audio/ogg,audio/webm,.mp3,.m4a,.aac,.wav,.flac,.ogg,.webm" onChange={(event) => { setAudio(event.target.files?.[0]); event.target.value = ''; }} /></label>
-          {project.audio && <button type="button" onClick={() => { URL.revokeObjectURL(project.audio!.url); commitProject({ ...project, audio: null }); }}><X size={12} /> Remove music</button>}
+          {project.audio && <button type="button" onClick={() => commitProject({ ...project, audio: null })}><X size={12} /> Remove music</button>}
         </div>
         {mediaNotice && <div className="reel-media-notice" role="status">{mediaNotice}</div>}
         <div className="reel-timeline" role="listbox" aria-label="Reel clips" aria-multiselectable="true">
@@ -427,7 +550,7 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
               }}
             >
               <img src={clip.imageUrl} alt={clip.title} />
-              <div><b>{String(index + 1).padStart(2, '0')}</b><strong>{clip.title}</strong><span>{clip.duration.toFixed(1)}s · {[...reelGradeStack(clip), ...reelVisualEffectStack(clip)].join(' + ')} · {clip.transition}</span></div>
+              <div><b>{String(index + 1).padStart(2, '0')}</b><strong>{clip.title}</strong><span>{clip.duration.toFixed(1)}s · {[...reelGradeStack(clip), ...reelVisualEffectStack(clip)].map((id) => pluginRegistry.get(id)?.id ?? id).join(' + ')} · {pluginRegistry.getTransition(clip.transition)?.id ?? clip.transition}</span></div>
               <div className="timeline-clip-actions">
                 <button type="button" title="Move earlier" disabled={index === 0} onClick={(event) => { event.stopPropagation(); moveClip(index, -1); }}><ArrowUp size={12} /></button>
                 <button type="button" title="Move later" disabled={index === project.clips.length - 1} onClick={(event) => { event.stopPropagation(); moveClip(index, 1); }}><ArrowDown size={12} /></button>
@@ -451,6 +574,7 @@ export function DirectorReelStudio({ project, onChange, onClose, canvasSelection
             <p>{renderState.stage === 'complete' ? <Check size={12} /> : renderState.stage !== 'error' ? <LoaderCircle size={12} className="spin" /> : <X size={12} />} {renderState.message} {formatBytes(renderState.outputBytes)}</p>
           </div>
         )}
+        {verifyReport && <ExportVerifyPanel report={verifyReport} />}
         {showQualityWarning && heavyEffectsNeedQuality && !rendering && !renderState.outputUrl && (
           <div className="render-quality-warning" role="alert">
             <span>Heavy visual effects need High or Maximum to look right. {project.quality === 'draft' ? 'Draft' : 'Balanced'} will soften pixel-sort and grain texture.</span>

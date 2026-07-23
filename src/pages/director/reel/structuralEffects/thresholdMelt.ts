@@ -1,5 +1,5 @@
 import { clamp01, deterministicHash, effectStrength } from '../effectRecipes';
-import type { StructuralEffectFrameOptions } from '../structuralEffects';
+import type { StructuralEffectFrameOptions } from '../../../../plugins/types';
 
 function smoothstep(value: number) {
   const bounded = clamp01(value);

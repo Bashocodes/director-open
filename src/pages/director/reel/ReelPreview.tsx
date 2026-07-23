@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play } from 'lucide-react';
+import {
+  pluginRegistry,
+  resolvedPluginParams,
+} from '../../../plugins/registry';
 import { drawReelCaption } from './caption';
 import { compileReelTimeline, reelDuration } from './project';
 import { reelGradeStack, reelVisualEffectStack, type ReelClip, type ReelProject } from './types';
@@ -33,7 +37,7 @@ function drawCover(
   if (sourceRatio > targetRatio) drawWidth = height * sourceRatio;
   else drawHeight = width / sourceRatio;
 
-  const pose = cameraPoseAt(clip.motion, progress);
+  const pose = cameraPoseAt(clip.motion, progress, clip.pluginParams?.[clip.motion]);
   const overflowX = Math.max(0, drawWidth * pose.zoom - width);
   const overflowY = Math.max(0, drawHeight * pose.zoom - height);
   context.drawImage(
@@ -66,7 +70,7 @@ function drawCameraFrame(
   clip: ReelClip,
   progress: number,
 ) {
-  const pose = cameraPoseAt(clip.motion, progress);
+  const pose = cameraPoseAt(clip.motion, progress, clip.pluginParams?.[clip.motion]);
   const drawWidth = width * pose.zoom;
   const drawHeight = height * pose.zoom;
   const overflowX = Math.max(0, drawWidth - width);
@@ -141,11 +145,23 @@ export function ReelPreview({ project }: { project: ReelProject }) {
       if (!image) return;
       const progress = Math.min(1, Math.max(0, local / clip.duration));
       const transition = timelineClip.incomingOverlap;
-      let opacity = transition > 0 ? Math.min(1, local / transition) : 1;
-      let translateX = 0;
-      if (transition > 0 && clip.transition === 'dip-black') opacity = Math.min(1, local / (transition * 0.5));
-      if (transition > 0 && clip.transition === 'slide-left') translateX = canvas.width * (1 - opacity);
-      if (transition > 0 && clip.transition === 'slide-right') translateX = -canvas.width * (1 - opacity);
+      const transitionPlugin = pluginRegistry.getTransition(clip.transition)
+        ?? pluginRegistry.getTransition('crossfade');
+      const transitionState = transitionPlugin?.preview({
+        progress: transition > 0 ? Math.min(1, local / transition) : 1,
+        width: canvas.width,
+        height: canvas.height,
+        params: resolvedPluginParams(
+          transitionPlugin,
+          clip.pluginParams?.[clip.transition],
+          { duration: clip.transitionDuration },
+        ),
+      }) ?? {
+        opacity: 1,
+        translateX: 0,
+        translateY: 0,
+        scale: 1,
+      };
 
       let clipCanvas = clipCanvasRef.current;
       if (!clipCanvas) {
@@ -158,7 +174,11 @@ export function ReelPreview({ project }: { project: ReelProject }) {
       clipContext.clearRect(0, 0, clipCanvas.width, clipCanvas.height);
       const grades = reelGradeStack(clip);
       const gradeFilters = grades
-        .map((effect) => previewGradeFilter(effect, clip.intensity))
+        .map((effect) => previewGradeFilter(
+          effect,
+          clip.intensity,
+          clip.pluginParams?.[effect],
+        ))
         .filter((value) => value !== 'none');
       clipContext.filter = 'none';
       const visualEffects = reelVisualEffectStack(clip);
@@ -233,8 +253,9 @@ export function ReelPreview({ project }: { project: ReelProject }) {
       }
 
       context.save();
-      context.globalAlpha = opacity;
-      context.translate(translateX, 0);
+      context.globalAlpha = transitionState.opacity;
+      context.translate(transitionState.translateX, transitionState.translateY);
+      context.scale(transitionState.scale, transitionState.scale);
       context.drawImage(clipCanvas, 0, 0);
       context.restore();
     });

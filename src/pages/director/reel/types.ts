@@ -1,10 +1,6 @@
 import type {
   ReelAspectRatio,
-  ReelEffect,
-  ReelMotion,
   ReelQuality,
-  ReelTransition,
-  ReelVisualEffect,
 } from '../../../shared/directorSchemas';
 
 export type ReelClip = {
@@ -16,16 +12,18 @@ export type ReelClip = {
   duration: number;
   /** True once a person or Director action has deliberately set this duration. */
   durationWasUserSet?: boolean;
-  effect: ReelEffect;
+  effect: string;
   /** Ordered color-grade layers. `effect` remains the backwards-compatible base layer. */
-  gradeStack?: ReelEffect[];
-  visualEffect?: ReelVisualEffect;
+  gradeStack?: string[];
+  visualEffect?: string;
   /** Ordered optical/effect layers. `visualEffect` remains the backwards-compatible base layer. */
-  visualEffectStack?: ReelVisualEffect[];
-  transition: ReelTransition;
+  visualEffectStack?: string[];
+  transition: string;
   transitionDuration: number;
-  motion: ReelMotion;
+  motion: string;
   intensity: number;
+  /** Additive parameters for registered plugins; legacy strength/blend stay on their old fields. */
+  pluginParams?: Record<string, Record<string, unknown>>;
   caption: string;
 };
 
@@ -33,11 +31,11 @@ function unique<T extends string>(values: readonly T[]) {
   return values.filter((value, index) => values.indexOf(value) === index);
 }
 
-export function reelGradeStack(clip: ReelClip): ReelEffect[] {
+export function reelGradeStack(clip: ReelClip): string[] {
   return unique((clip.gradeStack?.length ? clip.gradeStack : [clip.effect]).filter(Boolean)).slice(0, 5);
 }
 
-export function reelVisualEffectStack(clip: ReelClip): ReelVisualEffect[] {
+export function reelVisualEffectStack(clip: ReelClip): string[] {
   const values = clip.visualEffectStack?.length
     ? clip.visualEffectStack
     : [clip.visualEffect || 'none'];

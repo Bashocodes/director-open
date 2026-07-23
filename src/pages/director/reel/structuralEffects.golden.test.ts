@@ -22,13 +22,13 @@ const GOLDEN_OPTIONS = {
 
 // One deliberately visible line per effect: update only the affected line when
 // a reviewed visual-maths change intentionally alters its rendered pixels.
-const GOLDEN_FINGERPRINTS = {
+const GOLDEN_FINGERPRINTS: Record<string, string> = {
   'pixel-sort': 'fnv1a=e31f4f4b;changed=1337',
   'glitch-burst': 'fnv1a=f23c0cae;changed=12276',
   'halftone-reveal': 'fnv1a=56b43b25;changed=12288',
   'ripple-drift': 'fnv1a=09657059;changed=9337',
   'threshold-melt': 'fnv1a=594e4409;changed=12288',
-} as const satisfies Record<StructuralEffectId, string>;
+};
 
 function fixtureFrame() {
   const pixels = new Uint8ClampedArray(WIDTH * HEIGHT * 4);

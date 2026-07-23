@@ -6,10 +6,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '127.0.0.1',
-    port: 5173,
-    proxy: {
-      '/director/api': 'http://127.0.0.1:8787',
-    },
+    port: 5190,
+    strictPort: true,
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'credentialless',
@@ -25,5 +23,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: true,
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 });

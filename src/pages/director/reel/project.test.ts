@@ -13,15 +13,16 @@ import {
   toReelProjectContext,
 } from './project';
 
+const localImage = new File(['local'], 'reference.png', { type: 'image/png' });
 const objects: CanvasObject[] = [
   {
     id: 'upload-a', title: 'Quiet Resolve', subtitle: 'Warrior',
-    kind: 'upload', source: 'UPLOAD', imageUrl: '/fixtures/emotion-reference.jpg',
+    kind: 'upload', source: 'UPLOAD', imageUrl: 'blob:local-emotion-reference', sourceFile: localImage,
     position: { x: 0, y: 0 }, inherit: [], locks: [], summary: EMPTY_SUMMARY,
   },
   {
     id: 'upload-b', title: 'Brutalist Silver', subtitle: 'World',
-    kind: 'upload', source: 'UPLOAD', imageUrl: '/fixtures/material-reference.jpg',
+    kind: 'upload', source: 'UPLOAD', imageUrl: 'blob:local-material-reference', sourceFile: localImage,
     position: { x: 200, y: 0 }, inherit: [], locks: [], summary: EMPTY_SUMMARY,
   },
 ];
@@ -54,7 +55,7 @@ function makeObjects(count: number): CanvasObject[] {
     id: `reference-${objectIndex}`,
     assetId: `asset-${objectIndex}`,
     title: `Reference ${objectIndex}`,
-    imageUrl: `/demo/reference-${objectIndex}.jpg`,
+    imageUrl: `blob:local-reference-${objectIndex}`,
   }));
 }
 
@@ -140,7 +141,7 @@ describe('Director reel project tools', () => {
     index = 0;
     const project = createReelProject(objects, ['upload-b', 'upload-b'], createId);
     expect(project.clips).toHaveLength(1);
-    expect(project.clips[0]).toMatchObject({ objectId: 'upload-b', imageUrl: '/fixtures/material-reference.jpg' });
+    expect(project.clips[0]).toMatchObject({ objectId: 'upload-b', imageUrl: 'blob:local-material-reference' });
     expect(new Set(project.clips.map((clip) => clip.id)).size).toBe(project.clips.length);
 
     const capped = createReelProject(makeObjects(20), [], createId);

@@ -17,6 +17,8 @@ export type CanvasObject = {
   source: CanvasObjectSource;
   imageUrl?: string;
   previewUrl?: string;
+  /** Browser-local source bytes. Never serialized into model or Worker requests. */
+  sourceFile?: File;
   position: { x: number; y: number };
   inherit: InheritanceChannel[];
   locks: string[];

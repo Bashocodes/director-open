@@ -1,35 +1,25 @@
-import { pixelSortRgba } from './pixelSortEngine';
+import {
+  pluginRegistry,
+  resolvedPluginParams,
+} from '../../../plugins/registry';
+import type {
+  AnyEffectPlugin,
+  StructuralEffectFrameOptions,
+} from '../../../plugins/types';
 import { structuralEffectSeed } from './effectRecipes';
-import type { CanonicalReelVisualEffect } from '../../../shared/reelVisualEffects';
-import { thresholdMeltPlugin } from './structuralEffects/thresholdMelt';
-import { glitchBurstPlugin } from './structuralEffects/glitchBurst';
-import { halftoneRevealPlugin } from './structuralEffects/halftoneReveal';
-import { rippleDriftPlugin } from './structuralEffects/rippleDrift';
 
-export type StructuralEffectId = Exclude<
-  CanonicalReelVisualEffect,
-  'none' | 'crt-scan' | 'motion-echo'
->;
-export const STRUCTURAL_EFFECT_IDS = [
-  'pixel-sort',
-  'glitch-burst',
-  'halftone-reveal',
-  'ripple-drift',
-  'threshold-melt',
-] as const satisfies readonly StructuralEffectId[];
+export type { StructuralEffectFrameOptions };
+export type StructuralEffectId = string;
 
-export type StructuralEffectFrameOptions = {
-  phase: number;
-  progress: number;
-  seed: number;
-  intensity: number;
-  /** Engine metadata for discrete schedules; plugins still key visuals from the four fields above. */
-  frameIndex?: number;
-  frameCount?: number;
-  baseSeed?: number;
-};
+function structuralPlugins() {
+  return pluginRegistry.listEffects('visual', { includeHidden: true })
+    .filter((plugin) => plugin.stage === 'pre-motion' && Boolean(plugin.frameTransform));
+}
 
-export interface StructuralEffectPlugin {
+/** Stable compatibility roster; new plugin files are inserted by order and id. */
+export const STRUCTURAL_EFFECT_IDS = structuralPlugins().map((plugin) => plugin.id);
+
+export type StructuralEffectPlugin = {
   id: StructuralEffectId;
   renderFrame: (
     sourceRgba: Uint8ClampedArray,
@@ -37,41 +27,45 @@ export interface StructuralEffectPlugin {
     height: number,
     options: StructuralEffectFrameOptions,
   ) => Uint8ClampedArray;
-}
+};
 
 export type StructuralEffectStackOptions = StructuralEffectFrameOptions & {
   effectSeeds?: Partial<Record<StructuralEffectId, number>>;
-};
-
-const pixelSortPlugin: StructuralEffectPlugin = {
-  id: 'pixel-sort',
-  renderFrame(sourceRgba, width, height, options) {
-    return pixelSortRgba(sourceRgba, width, height, {
-      intensity: options.intensity,
-      seed: options.seed,
-      phase: options.phase,
-    });
-  },
-};
-
-const STRUCTURAL_EFFECT_PLUGINS: Record<StructuralEffectId, StructuralEffectPlugin> = {
-  'pixel-sort': pixelSortPlugin,
-  'glitch-burst': glitchBurstPlugin,
-  'halftone-reveal': halftoneRevealPlugin,
-  'ripple-drift': rippleDriftPlugin,
-  'threshold-melt': thresholdMeltPlugin,
+  pluginParams?: Partial<Record<string, Readonly<Record<string, unknown>>>>;
 };
 
 export function isStructuralEffect(value: string): value is StructuralEffectId {
-  return Object.hasOwn(STRUCTURAL_EFFECT_PLUGINS, value);
+  const plugin = pluginRegistry.getEffect(value, 'visual');
+  return plugin?.stage === 'pre-motion' && Boolean(plugin.frameTransform);
 }
 
 export function structuralEffectIds(values: readonly string[]) {
   return values.filter(isStructuralEffect);
 }
 
-export function structuralEffectPlugin(id: StructuralEffectId) {
-  return STRUCTURAL_EFFECT_PLUGINS[id];
+function registeredStructuralEffect(id: StructuralEffectId): AnyEffectPlugin {
+  const plugin = pluginRegistry.getEffect(id, 'visual');
+  if (!plugin?.frameTransform || plugin.stage !== 'pre-motion') {
+    throw new Error(`Unknown structural effect “${id}”.`);
+  }
+  return plugin;
+}
+
+/** Compatibility facade for callers of the pre-registry structural API. */
+export function structuralEffectPlugin(id: StructuralEffectId): StructuralEffectPlugin {
+  const plugin = registeredStructuralEffect(id);
+  return {
+    id: plugin.id,
+    renderFrame(sourceRgba, width, height, options) {
+      return plugin.frameTransform!({
+        sourceRgba,
+        width,
+        height,
+        ...options,
+        params: resolvedPluginParams(plugin, {}, { intensity: options.intensity }),
+      });
+    },
+  };
 }
 
 export function renderStructuralEffectFrame(
@@ -79,13 +73,29 @@ export function renderStructuralEffectFrame(
   sourceRgba: Uint8ClampedArray,
   width: number,
   height: number,
-  options: StructuralEffectFrameOptions,
+  options: StructuralEffectFrameOptions & {
+    pluginParams?: Readonly<Record<string, unknown>>;
+  },
 ) {
   if (sourceRgba.length !== width * height * 4) {
     throw new Error('Structural-effect source dimensions do not match.');
   }
-  if (options.phase <= 0 || options.progress <= 0 || options.progress >= 1) return sourceRgba.slice();
-  return structuralEffectPlugin(id).renderFrame(sourceRgba, width, height, options);
+  if (options.phase <= 0 || options.progress <= 0 || options.progress >= 1) {
+    return sourceRgba.slice();
+  }
+  const plugin = registeredStructuralEffect(id);
+  const params = resolvedPluginParams(
+    plugin,
+    options.pluginParams,
+    { intensity: options.intensity },
+  );
+  return plugin.frameTransform!({
+    sourceRgba,
+    width,
+    height,
+    ...options,
+    params,
+  });
 }
 
 export function renderStructuralEffectStackFrame(
@@ -109,6 +119,7 @@ export function renderStructuralEffectStackFrame(
       ...options,
       seed,
       baseSeed,
+      pluginParams: options.pluginParams?.[id],
     });
   });
   return frame;

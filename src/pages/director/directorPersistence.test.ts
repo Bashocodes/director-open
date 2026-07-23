@@ -1,23 +1,27 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   archiveDirectorProject,
   deleteDirectorHistoryProject,
   listDirectorHistory,
   loadActiveDirectorProject,
+  loadActiveDirectorProjectFromIndexedDb,
   loadDirectorHistoryProject,
   makePersistableDirectorProject,
   saveActiveDirectorProject,
+  saveActiveDirectorProjectToIndexedDb,
 } from './directorPersistence';
 import type { ReelProject } from './reel/types';
 import { EMPTY_SUMMARY, type CanvasObject } from './types';
 
-const remoteObject: CanvasObject = {
+const localImage = new File(['local image bytes'], 'kinetic.png', { type: 'image/png', lastModified: 12 });
+const localObject: CanvasObject = {
   id: 'upload-1',
   title: 'Kinetic Kingdom',
   subtitle: 'Local image',
   kind: 'upload',
   source: 'UPLOAD',
-  imageUrl: '/fixtures/kinetic.jpg',
+  imageUrl: 'blob:canvas-kinetic',
+  sourceFile: localImage,
   position: { x: 120, y: 240 },
   inherit: ['palette'],
   locks: [],
@@ -27,8 +31,8 @@ const remoteObject: CanvasObject = {
 function projectInput(reelProject: ReelProject | null = null) {
   return {
     sessionId: 'director-session-1',
-    objects: [remoteObject],
-    selectedIds: [remoteObject.id],
+    objects: [localObject],
+    selectedIds: [localObject.id],
     mode: 'animate' as const,
     goal: 'Build a coherent reel.',
     exclusions: [],
@@ -47,7 +51,18 @@ function projectInput(reelProject: ReelProject | null = null) {
 }
 
 describe('Director local project persistence', () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    window.localStorage.clear();
+    let objectUrl = 0;
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => `blob:restored-${++objectUrl}`),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
+  });
 
   it('restores the active canvas and conversation after a reload boundary', () => {
     const project = makePersistableDirectorProject(projectInput());
@@ -68,7 +83,7 @@ describe('Director local project persistence', () => {
       id: 'legacy-reel', title: 'Legacy reel', aspectRatio: '9:16', fps: 24, quality: 'high',
       clips: [{
         id: 'legacy-clip', objectId: 'upload-1', title: 'Legacy portrait',
-        imageUrl: '/fixtures/kinetic.jpg', duration: 3.2, effect: 'clean',
+        imageUrl: 'data:image/png;base64,AA==', duration: 3.2, effect: 'clean',
         visualEffect: 'glitch-burst', visualEffectStack: ['glitch-burst'], transition: 'cut',
         transitionDuration: 0, motion: 'still', intensity: 60, caption: '',
       }],
@@ -129,6 +144,51 @@ describe('Director local project persistence', () => {
     expect(loadDirectorHistoryProject('legacy-model-history')?.model).toBe('gpt-5.4-mini');
   });
 
+  it('round-trips registered plugin parameter records without changing legacy ids', () => {
+    const reel: ReelProject = {
+      id: 'plugin-reel',
+      title: 'Plugin reel',
+      aspectRatio: '9:16',
+      fps: 30,
+      quality: 'high',
+      clips: [{
+        id: 'plugin-clip',
+        objectId: 'upload-1',
+        title: 'Plugin portrait',
+        imageUrl: 'data:image/png;base64,AA==',
+        duration: 3.2,
+        effect: 'clean',
+        visualEffect: 'halftone-reveal',
+        visualEffectStack: ['halftone-reveal'],
+        transition: 'cut',
+        transitionDuration: 0,
+        motion: 'push-in',
+        intensity: 60,
+        pluginParams: {
+          'halftone-reveal': { intensity: 73 },
+          'push-in': {},
+        },
+        caption: '',
+      }],
+      selectedClipIds: ['plugin-clip'],
+      audio: null,
+      renderRequested: false,
+    };
+    const project = makePersistableDirectorProject(projectInput(reel));
+    expect(project).not.toBeNull();
+    if (!project) throw new Error('Expected a persistable project.');
+
+    expect(saveActiveDirectorProject(project)).toBe(true);
+    expect(loadActiveDirectorProject()?.reelProject?.clips[0]).toMatchObject({
+      visualEffect: 'halftone-reveal',
+      motion: 'push-in',
+      pluginParams: {
+        'halftone-reveal': { intensity: 73 },
+        'push-in': {},
+      },
+    });
+  });
+
   it('promotes the legacy Gemini active default once while preserving a later explicit Gemini choice', () => {
     const legacyDefault = makePersistableDirectorProject({
       ...projectInput(),
@@ -146,23 +206,16 @@ describe('Director local project persistence', () => {
     expect(loadActiveDirectorProject()?.model).toBe('gemini-3.5-flash');
   });
 
-  it('keeps remote timeline clips while explicitly dropping expired local file handles', () => {
-    const localImage = new File(['image'], 'private-concept.png', { type: 'image/png' });
+  it('keeps local timeline metadata while excluding volatile URLs and File objects from JSON', () => {
+    const timelineImage = new File(['image'], 'private-concept.png', { type: 'image/png' });
     const localAudio = new File(['audio'], 'private-score.wav', { type: 'audio/wav' });
     const reel: ReelProject = {
       id: 'reel-1', title: 'Recovered reel', aspectRatio: '9:16', fps: 30, quality: 'balanced',
-      clips: [
-        {
-          id: 'clip-remote', objectId: 'upload-1', title: 'Remote', imageUrl: '/fixtures/kinetic.jpg',
-          duration: 3, effect: 'cinematic', transition: 'cut', transitionDuration: 0,
-          motion: 'push-in', intensity: 62, caption: '',
-        },
-        {
+      clips: [{
           id: 'clip-local', objectId: null, title: 'Private', imageUrl: 'blob:https://director.test/private',
-          sourceFile: localImage, duration: 3, effect: 'clean', transition: 'crossfade', transitionDuration: 0.4,
+          sourceFile: timelineImage, duration: 3, effect: 'clean', transition: 'cut', transitionDuration: 0,
           motion: 'still', intensity: 50, caption: '',
-        },
-      ],
+      }],
       selectedClipIds: ['clip-local'],
       audio: { name: localAudio.name, url: 'blob:https://director.test/audio', sourceFile: localAudio },
       renderRequested: false,
@@ -171,10 +224,61 @@ describe('Director local project persistence', () => {
     const project = makePersistableDirectorProject(projectInput(reel));
     expect(project).not.toBeNull();
     if (!project) throw new Error('Expected a persistable project.');
-    expect(project.reelProject?.clips.map((clip) => clip.id)).toEqual(['clip-remote']);
-    expect(project.reelProject?.selectedClipIds).toEqual([]);
+    expect(project.reelProject?.clips.map((clip) => clip.id)).toEqual(['clip-local']);
+    expect(project.reelProject?.clips[0].imageUrl).toBe('local-media:clip:clip-local');
+    expect(project.reelProject?.clips[0]).not.toHaveProperty('sourceFile');
+    expect(project.reelProject?.selectedClipIds).toEqual(['clip-local']);
     expect(project.reelProject?.audio).toBeNull();
-    expect(project.localMediaOmitted).toBe(2);
+    expect(project.localMediaOmitted).toBe(3);
+    expect(JSON.stringify(project)).not.toContain('local image bytes');
+  });
+
+  it('round-trips an active project with imported image and audio blobs through IndexedDB', async () => {
+    const timelineImage = new File(['timeline bytes'], 'timeline.webp', { type: 'image/webp', lastModified: 33 });
+    const localAudio = new File(['audio bytes'], 'score.wav', { type: 'audio/wav', lastModified: 44 });
+    const reel: ReelProject = {
+      id: 'reel-1', title: 'Recovered reel', aspectRatio: '9:16', fps: 30, quality: 'balanced',
+      clips: [{
+        id: 'clip-local', objectId: localObject.id, title: 'Local clip', imageUrl: 'blob:clip',
+        sourceFile: timelineImage, duration: 3, effect: 'clean', transition: 'cut',
+        transitionDuration: 0, motion: 'still', intensity: 50, caption: '',
+      }],
+      selectedClipIds: ['clip-local'],
+      audio: { name: localAudio.name, url: 'blob:audio', sourceFile: localAudio },
+      renderRequested: false,
+    };
+    const input = projectInput(reel);
+    const project = makePersistableDirectorProject(input);
+    expect(project).not.toBeNull();
+    if (!project) throw new Error('Expected a persistable project.');
+
+    expect(await saveActiveDirectorProjectToIndexedDb(project, {
+      objects: input.objects,
+      reelProject: reel,
+    })).toBe('saved');
+    const restored = await loadActiveDirectorProjectFromIndexedDb();
+
+    expect(restored?.localMediaOmitted).toBe(0);
+    expect(restored?.objects[0]).toMatchObject({
+      id: localObject.id,
+      imageUrl: 'blob:restored-1',
+    });
+    expect(restored?.objects[0].sourceFile?.name).toBe('kinetic.png');
+    expect(restored?.objects[0].sourceFile?.type).toBe('image/png');
+    expect(restored?.objects[0].sourceFile?.size).toBe(localImage.size);
+    expect(restored?.reelProject?.clips[0]).toMatchObject({
+      id: 'clip-local',
+      imageUrl: 'blob:restored-2',
+    });
+    expect(restored?.reelProject?.clips[0].sourceFile?.name).toBe('timeline.webp');
+    expect(restored?.reelProject?.clips[0].sourceFile?.type).toBe('image/webp');
+    expect(restored?.reelProject?.clips[0].sourceFile?.size).toBe(timelineImage.size);
+    expect(restored?.reelProject?.audio).toMatchObject({
+      name: 'score.wav',
+      url: 'blob:restored-3',
+    });
+    expect(restored?.reelProject?.audio?.sourceFile.type).toBe('audio/wav');
+    expect(restored?.reelProject?.audio?.sourceFile.size).toBe(localAudio.size);
   });
 
   it('creates bounded recovery snapshots that can be restored and deleted', () => {

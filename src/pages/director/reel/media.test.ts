@@ -56,19 +56,23 @@ describe('local reel media safeguards', () => {
 
   it('validates known local media before loading the engine', () => {
     expect(() => assertKnownMediaLimits(project())).not.toThrow();
-    const remote = project();
-    remote.clips = [{ ...remote.clips[0], sourceFile: undefined, imageUrl: '/director/api/assets/image/extensionless' }];
-    expect(() => assertKnownMediaLimits(remote)).not.toThrow();
+    const missingLocalSource = project();
+    missingLocalSource.clips = [{ ...missingLocalSource.clips[0], sourceFile: undefined }];
+    expect(() => assertKnownMediaLimits(missingLocalSource)).toThrow(/missing its local source file/);
   });
 
-  it('revokes only browser-local object URLs owned by the project', () => {
+  it('revokes a clip object URL when that clip is removed', () => {
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const previous = project();
+    revokeRemovedProjectObjectUrls(previous, { ...previous, clips: [] });
+    expect(revoke).toHaveBeenCalledWith('blob:image');
+    expect(revoke).not.toHaveBeenCalledWith('blob:audio');
+    revoke.mockRestore();
+  });
+
+  it('revokes all browser-local object URLs when a project is released', () => {
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     revokeProjectObjectUrls(project());
-    expect(revoke).toHaveBeenCalledWith('blob:image');
-    expect(revoke).toHaveBeenCalledWith('blob:audio');
-    revoke.mockClear();
-    const previous = project();
-    revokeRemovedProjectObjectUrls(previous, { ...previous, clips: [], audio: null });
     expect(revoke).toHaveBeenCalledWith('blob:image');
     expect(revoke).toHaveBeenCalledWith('blob:audio');
     revoke.mockRestore();

@@ -4,7 +4,6 @@ import type { WorkerEnv } from './env';
 
 function env() {
   return {
-    DIRECTOR_DEMO_MODE: '1',
     ASSETS: {
       fetch: vi.fn(async () => new Response('<!doctype html><html><body>Director</body></html>', {
         headers: { 'content-type': 'text/html; charset=utf-8' },
@@ -14,52 +13,15 @@ function env() {
 }
 
 describe('standalone Worker boundary', () => {
-  it.each(['/api/health', '/director/api/health', '/director/api/health?source=test'])('reports Director 3.0.1 at %s without a runtime provider key', async (path) => {
-    const response = await worker.fetch!(new Request(`https://fallback.test${path}`), env());
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: true,
-      version: '3.0.1',
-      demoEnabled: true,
-      demoMode: true,
-      provider: 'demo',
-      geminiConfigured: false,
-      openaiConfigured: false,
-      dataSource: 'local-library',
-      localReelRendering: true,
-      transactionalReelActions: true,
-      browserLocalProjectHistory: true,
-    });
-  });
-
-  it('reports OpenAI as primary when both optional providers are configured', async () => {
-    const bindings = env();
-    Object.assign(bindings, { OPENAI_API_KEY: 'openai-test', GEMINI_API_KEY: 'gemini-test' });
-    const response = await worker.fetch!(new Request('https://fallback.test/director/api/health'), bindings);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: true,
-      demoEnabled: true,
-      demoMode: false,
-      provider: 'openai',
-      openaiConfigured: true,
-      geminiConfigured: true,
-    });
-  });
-
   it.each([
-    ['OPENAI_API_KEY', 'openai'],
-    ['GEMINI_API_KEY', 'gemini'],
-  ] as const)('reports the configured %s provider while keeping demo fallback available', async (binding, provider) => {
-    const bindings = env();
-    Object.assign(bindings, { [binding]: 'test-only' });
-    const response = await worker.fetch!(new Request('https://fallback.test/director/api/health'), bindings);
-    await expect(response.json()).resolves.toMatchObject({
-      demoEnabled: true,
-      demoMode: false,
-      provider,
-      openaiConfigured: binding === 'OPENAI_API_KEY',
-      geminiConfigured: binding === 'GEMINI_API_KEY',
-    });
+    '/api/health',
+    '/director/api/health',
+    '/director/api/director',
+    '/director/api/director?source=test',
+  ])('rejects the removed server API at %s', async (path) => {
+    const response = await worker.fetch!(new Request(`https://fallback.test${path}`), env());
+    expect(response.status).toBe(404);
+    expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
   it('streams static content with isolation, framing, and compatible CSP headers', async () => {
@@ -73,7 +35,11 @@ describe('standalone Worker boundary', () => {
     expect(response.headers.get('content-security-policy')).toContain("script-src 'self' blob:");
     expect(response.headers.get('content-security-policy')).toContain("'wasm-unsafe-eval'");
     expect(response.headers.get('content-security-policy')).toContain("connect-src 'self' blob:");
-    expect(response.headers.get('content-security-policy')).toContain('https://cdn.jsdelivr.net');
+    expect(response.headers.get('content-security-policy')).toContain('https:');
+    expect(response.headers.get('content-security-policy')).toContain('http://127.0.0.1:*');
+    expect(response.headers.get('content-security-policy')).toContain('img-src blob: data:');
+    expect(response.headers.get('content-security-policy')).toContain('media-src blob:');
+    expect(response.headers.get('content-security-policy')).not.toContain("img-src 'self'");
     expect(response.headers.get('content-security-policy')).not.toContain('imagedelivery.net');
     const assetRequest = vi.mocked(bindings.ASSETS.fetch).mock.calls[0]?.[0] as Request;
     expect(new URL(assetRequest.url).pathname).toBe('/');
@@ -109,6 +75,18 @@ describe('standalone Worker boundary', () => {
 
     expect(search.status).toBe(404);
     expect(image.status).toBe(404);
+    expect(bindings.ASSETS.fetch).not.toHaveBeenCalled();
+  });
+
+  it('has no endpoint that accepts user media', async () => {
+    const bindings = env();
+    const response = await worker.fetch!(new Request('https://director.test/director/api/media/upload', {
+      method: 'POST',
+      headers: { 'content-type': 'image/png' },
+      body: new Uint8Array([1, 2, 3]),
+    }), bindings);
+
+    expect(response.status).toBe(404);
     expect(bindings.ASSETS.fetch).not.toHaveBeenCalled();
   });
 });

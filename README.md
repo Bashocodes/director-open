@@ -1,62 +1,102 @@
 # Director Open
 
-Director Open is a local-first visual direction, storytelling, and reel studio. Upload visual references from your device, choose what to inherit from each source, compile a Direction Contract, expand it into a coherent story, and edit and render the result as an MP4 in the browser.
+> A local-first reel studio that humans and AI agents can both drive — your media never leaves the browser.
 
-The app combines a React 18 + Vite interface, a Cloudflare Worker for structured director turns, schema-validated canvas and reel actions, browser-local project recovery, and FFmpeg.wasm rendering.
+> **Hero screenshot placeholder:** replace this block with `docs/images/director-open-hero.png` before the repository is made public.
 
-## What the user creates
+Director Open is a browser-based visual direction and reel editor. Bring your own images and audio, shape a structured story on the canvas, edit the reel manually or with an optional AI provider, and render and inspect the MP4 on your device.
 
-1. Upload local visual references to the canvas.
-2. Choose inheritance channels: emotion, material, world, framing, palette, identity, silhouette, or lighting.
-3. Compile sources, locks, exclusions, and conflict resolutions into a Direction Contract.
-4. Turn the approved contract into a three-to-eight-beat visual story.
-5. Inspect continuity drift and apply bounded revisions.
-6. Open Reel Studio and edit clips manually or through chat.
-7. Apply color grades, structural effects, transitions, camera motion, timing, captions, format, and render quality.
-8. Add local music and render an H.264 MP4 locally with FFmpeg.wasm.
+## Features
 
-The local library intentionally starts empty. There is no bundled corpus, gallery search, remote asset provider, or image proxy. Local images, audio, and rendered video bytes stay in the browser and are never sent to the Worker or model providers.
+- **Local-first media:** imported images, audio, generated frames, previews, project recovery, and MP4 rendering stay in the browser. Projects and media blobs persist in IndexedDB.
+- **Bring-your-own-key AI:** optional browser-direct adapters support OpenAI, Anthropic, Google Gemini, and OpenAI-compatible custom or local servers such as Ollama, LM Studio, and vLLM. Keys stay in browser storage and are sent only to the selected provider.
+- **Canvas-aware, human-gated edits:** chat receives a compact text serialization of the current project and proposes Zod-validated director actions. Nothing is applied until a person chooses **Apply**.
+- **Headless MCP editing:** the stdio-only `director-mcp` package lets Claude Code, Codex CLI, and other MCP clients inspect project JSON, validate and apply the same typed actions transactionally, compile timelines, and inspect render plans without starting the browser.
+- **Typed plugin API:** effects, transitions, and motion presets declare stable IDs, Zod parameter schemas, UI hints, preview hooks, and export hooks. Plugin controls and catalogs come from the registry.
+- **Browser-local reel engine:** FFmpeg.wasm compiles the timeline, grades, effects, motion, transitions, captions, and optional audio into an H.264 MP4.
+- **Built-in export verification:** a bounded TypeScript ISO-BMFF parser inspects the resulting bytes for duration, tracks, codecs, dimensions, frames, audio, and container integrity. Warnings never block the download.
+- **No required backend:** the Cloudflare Worker serves the compiled SPA and security headers only. It has no media, AI, analytics, account, or persistence API.
 
-## Reel engine
+## Quickstart
 
-Preview and export share the same bounded timeline compiler, caption layout, structural-effect recipes, transition overlap rules, and normalized project state. FFmpeg.wasm loads only after the user confirms a render.
+Requirements:
 
-The editor supports up to 16 still-image clips, 24/30 fps, 9:16, 1:1, and 16:9 output, local music, ten color grades, seven structural visual effects, seven transitions, ten camera moves, and draft through maximum quality modes. See [the local rendering architecture](./docs/DIRECTOR_V2_LOCAL_RENDERING.md) and [third-party notices](./THIRD_PARTY_NOTICES.md).
-
-## Models
-
-The Worker supports OpenAI Responses with GPT-5.4 or GPT-5.4 mini and an optional Gemini 3.5 Flash path. Provider credentials are optional server-side Worker secrets and never enter browser code, committed files, or local project history.
-
-When the selected provider is not configured, the credential-free deterministic mode returns schema-valid direction, story, continuity, and reel actions. It is clearly labeled as a fallback rather than live model output.
-
-## Local setup
-
-Requirements: Node.js 22.12.0 or newer and pnpm 11.
+- Node.js 22.12 or newer
+- pnpm 11
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Open `http://localhost:5173/director/`. No environment file or provider credential is required for deterministic local operation.
+Open `http://127.0.0.1:5190/director/`. The local static Worker runs on port `8790`. No environment file, account, or AI key is required.
 
-Optional provider secrets may be supplied through an uncommitted `.dev.vars` file:
-
-```text
-OPENAI_API_KEY=
-GEMINI_API_KEY=
-```
-
-## Verification
+Run the complete quality gate before opening a pull request:
 
 ```bash
 pnpm verify
 ```
 
-This runs TypeScript checks for the browser and Worker, the Vitest suite, and the production Vite build.
+That command type-checks the browser, Worker, and MCP package, runs the Vitest suite, and builds the production application and MCP executable.
 
-## Privacy
+## Architecture
 
-Canvas metadata and recovery snapshots are stored in browser-local storage. Imported local media, `File` objects, object URLs, and rendered downloads are intentionally ephemeral and must be re-added after refresh. OpenAI requests use `store: false`.
+```text
+Browser
+├── React + Vite SPA
+├── IndexedDB ── project state + imported media blobs
+├── Canvas/reel engine ── schema-validated human and AI actions
+├── FFmpeg.wasm ── local render ── verified MP4 download
+└── Optional text request ── directly to the selected AI provider
 
-See [PRIVACY.md](./PRIVACY.md) for the complete data boundary and [docs/OPENAI_IMPLEMENTATION.md](./docs/OPENAI_IMPLEMENTATION.md) for the structured model integration.
+Cloudflare Worker
+└── Compiled static assets + security headers only
+
+Headless
+└── stdio MCP server ── project JSON + the same action/apply/timeline/render-plan code
+```
+
+The Worker rejects `/api/*`; it never receives media, prompts, keys, projects, or rendered output. Provider-enabled chat calls leave the browser only as text sent directly to the provider the user selected. The FFmpeg core is executable application code downloaded on demand; no user media is sent with that request.
+
+Deployment is deliberately isolated to the `director-open` workers.dev lane. See [DEPLOY.md](./DEPLOY.md).
+
+## Privacy guarantee
+
+Director Open has no media server, upload endpoint, analytics SDK, advertising tracker, user database, or telemetry pipeline. Images, audio, intermediate frames, and video bytes remain on the device. Temporary object URLs and FFmpeg files are released after replacement, removal, cancellation, failure, or completion.
+
+The optional AI feature sends text-only conversation and a bounded text summary of project state directly to the chosen provider. It does not send media bytes, local filenames, `File` objects, object URLs, frames, or exports. Provider data-use terms still apply when AI is enabled.
+
+See [PRIVACY.md](./PRIVACY.md) for the complete boundary.
+
+## Plugin authoring
+
+New effects, transitions, and motion presets live in self-contained `.plugin.ts` modules and are discovered without editing core catalogs or UI components. Start with [PLUGINS.md](./PLUGINS.md), which documents the contract, reference plugins, determinism rules, parameter UI, and golden-frame tests.
+
+## FFmpeg licensing
+
+The bundled `@ffmpeg/ffmpeg` JavaScript wrapper is MIT-licensed. When a render starts, Director Open downloads `@ffmpeg/core` 0.12.10 from jsDelivr at:
+
+```text
+https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/
+```
+
+That runtime core is distributed as `GPL-2.0-or-later` and includes libx264; Director Open invokes `libx264` for H.264 export. This repository's MIT license does not relicense the FFmpeg core. Anyone redistributing, mirroring, modifying, or bundling that core must independently satisfy the applicable GPL obligations, including the relevant notices and corresponding-source requirements. This is a project notice, not legal advice.
+
+An optional WebCodecs export path is planned so compatible browsers and downstream deployments can render common formats without loading the GPL FFmpeg core. FFmpeg remains the compatibility path until that alternative reaches feature and output parity.
+
+Read [docs/FFMPEG_LICENSING.md](./docs/FFMPEG_LICENSING.md) and [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) before distributing a hosted or packaged build.
+
+## Roadmap
+
+- **MCP server — shipped:** [`packages/director-mcp`](./packages/director-mcp/README.md) exposes the validated director-action surface to local AI agents through a root-confined, file-based stdio workflow.
+- **Conductor phase later:** coordinate longer human-approved creative workflows across canvas direction, reel construction, and export.
+
+## Contributing
+
+Contributions are welcome, especially focused plugin additions. Read [CONTRIBUTING.md](./CONTRIBUTING.md), follow the [Code of Conduct](./CODE_OF_CONDUCT.md), and run `pnpm verify` before submitting a pull request.
+
+## License
+
+Director Open is licensed under the [MIT License](./LICENSE), copyright © 2026 KALAI LABS.
+
+The runtime FFmpeg core is separate GPL-licensed software; see the FFmpeg licensing section above.

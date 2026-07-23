@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   DIRECTOR_RESPONSE_JSON_SCHEMA,
+  describeDirectorActionSchema,
+  DirectorActionSchema,
   DirectorModelSchema,
   DirectorVisualEffectVocabularySchema,
   DirectorRequestSchema,
   DirectorResponseSchema,
+  MAX_DIRECTOR_ACTIONS,
   ReelProjectContextSchema,
   ReelVisualEffectSchema,
 } from './directorSchemas';
@@ -25,6 +28,153 @@ const emptyContext = {
 };
 
 describe('Director structured contracts', () => {
+  it('describes the canonical action schema with stable, detached enum lists', () => {
+    const first = describeDirectorActionSchema();
+    const second = describeDirectorActionSchema();
+
+    expect(first).toEqual({
+      format: 'director-actions-v1',
+      maxActions: MAX_DIRECTOR_ACTIONS,
+      envelope: 'strict-flat',
+      actionTypes: {
+        canvas: [
+          'search_and_add',
+          'select_objects',
+          'set_inheritance',
+          'remove_objects',
+          'set_goal',
+          'set_exclusions',
+        ],
+        reel: [
+          'open_reel_studio',
+          'add_clips',
+          'remove_clips',
+          'reorder_clips',
+          'style_clips',
+          'set_project',
+          'request_render',
+        ],
+      },
+      fields: {
+        canvas: [
+          'type',
+          'query',
+          'count',
+          'objectIds',
+          'objectId',
+          'channels',
+          'goal',
+          'exclusions',
+        ],
+        reel: [
+          'type',
+          'objectIds',
+          'clipIds',
+          'aspectRatio',
+          'fps',
+          'quality',
+          'effect',
+          'visualEffect',
+          'transition',
+          'motion',
+          'duration',
+          'intensity',
+          'caption',
+        ],
+      },
+      enums: {
+        inheritanceChannels: [
+          'emotion',
+          'material',
+          'world',
+          'framing',
+          'palette',
+          'identity',
+          'silhouette',
+          'lighting',
+        ],
+        aspectRatios: ['9:16', '1:1', '16:9'],
+        fps: [24, 30],
+        qualities: ['draft', 'balanced', 'high', 'maximum'],
+        effects: [
+          'clean',
+          'cinematic',
+          'hdr',
+          'warm',
+          'cool',
+          'mono',
+          'dream',
+          'vignette',
+          'blur',
+          'punch',
+          'teal-orange',
+          'vintage-film',
+          'glow',
+          'bleach-bypass',
+        ],
+        visualEffects: DIRECTOR_VISUAL_EFFECT_VOCABULARY,
+        transitions: [
+          'cut',
+          'crossfade',
+          'dip-black',
+          'slide-left',
+          'slide-right',
+          'zoom',
+          'soft-dissolve',
+        ],
+        motions: [
+          'still',
+          'push-in',
+          'pull-out',
+          'pan-left',
+          'pan-right',
+          'pan-up',
+          'pan-down',
+          'drift-up-left',
+          'drift-down-right',
+          'pulse',
+          'hero-push',
+          'arc-left',
+          'arc-right',
+          'float',
+        ],
+      },
+      limits: {
+        identifierCharacters: 160,
+        canvasObjectIds: 12,
+        reelObjectIds: 16,
+        reelClipIds: 16,
+        inheritanceChannels: 8,
+        exclusions: 24,
+        queryCharacters: 160,
+        searchCount: [1, 6],
+        goalCharacters: 1_000,
+        durationSeconds: [1, 12],
+        intensity: [0, 100],
+        captionCharacters: 180,
+      },
+      unavailableActions: {
+        search_and_add: 'Unavailable in the local-only project; upload media instead.',
+      },
+      fieldRule: 'Every strict flat-schema field is required; use null or [] when it does not apply.',
+    });
+    expect(second).toEqual(first);
+    expect(second.actionTypes.canvas).not.toBe(first.actionTypes.canvas);
+    expect(second.fields.canvas).not.toBe(first.fields.canvas);
+    expect(second.enums.visualEffects).not.toBe(first.enums.visualEffects);
+    expect(second.limits.durationSeconds).not.toBe(first.limits.durationSeconds);
+    expect(DirectorActionSchema.safeParse({
+      type: 'set_goal',
+      query: null,
+      count: null,
+      objectIds: [],
+      objectId: null,
+      channels: [],
+      goal: 'A restrained visual arc.',
+      exclusions: [],
+    }).success).toBe(true);
+  });
+
   it('accepts a bounded decoded-canvas request without image binaries', () => {
     const parsed = DirectorRequestSchema.safeParse({
       message: 'Compile this into a direction and story.',

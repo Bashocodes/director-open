@@ -5,8 +5,23 @@ import { DirectorReelStudio } from './DirectorReelStudio';
 import type { ReelProject } from './types';
 
 const renderHarness = vi.hoisted(() => ({
-  jobs: [] as Array<(callbacks?: { onStage: (stage: string, message: string) => void; onLog?: (message: string) => void }) => Promise<Blob>>,
+  jobs: [] as Array<(callbacks?: {
+    onStage: (stage: string, message: string) => void;
+    onLog?: (message: string) => void;
+    onVerify?: (report: unknown) => void;
+  }) => Promise<Blob>>,
   cancellations: 0,
+  failedVerifyReport: {
+    version: 1 as const,
+    verdict: 'fail' as const,
+    entries: [{
+      field: 'Container structure',
+      value: 'Malformed fixture',
+      sourceBox: null,
+      status: 'fail' as const,
+      message: 'The synthetic output is truncated — fail.',
+    }],
+  },
 }));
 
 vi.mock('./ReelPreview', () => ({ ReelPreview: () => <div>Preview</div> }));
@@ -21,10 +36,17 @@ vi.mock('./ffmpegRenderer', () => ({
   ),
   BrowserFfmpegRenderer: class {
     cancel() { renderHarness.cancellations += 1; }
-    render(_project: unknown, callbacks: { onStage: (stage: string, message: string) => void; onLog?: (message: string) => void }) {
+    render(_project: unknown, callbacks: {
+      onStage: (stage: string, message: string) => void;
+      onLog?: (message: string) => void;
+      onVerify?: (report: unknown) => void;
+    }) {
       const job = renderHarness.jobs.shift();
       if (!job) throw new Error('Missing render test job.');
-      return job(callbacks);
+      return job(callbacks).then((blob) => {
+        callbacks.onVerify?.(renderHarness.failedVerifyReport);
+        return blob;
+      });
     }
   },
 }));
@@ -33,7 +55,7 @@ const initialProject: ReelProject = {
   id: 'reel-1', title: 'Studio test', aspectRatio: '9:16', fps: 24, quality: 'draft',
   selectedClipIds: ['clip-1'], audio: null, renderRequested: false,
   clips: [{
-    id: 'clip-1', objectId: 'reference-1', title: 'Quiet Resolve', imageUrl: '/demo/emotion-reference.jpg',
+    id: 'clip-1', objectId: 'reference-1', title: 'Quiet Resolve', imageUrl: 'blob:local-studio-reference',
     duration: 2, effect: 'clean', transition: 'cut', transitionDuration: 0,
     motion: 'still', intensity: 50, caption: '',
   }],
@@ -77,9 +99,11 @@ describe('Director Reel Studio render transactions', () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: 'Render on this device' }));
     expect(await screen.findByRole('link', { name: 'Download MP4' })).toBeInTheDocument();
+    expect(screen.getByText('Export checks found issues')).toBeInTheDocument();
 
     chooseOption('Quality', 'Balanced');
     await waitFor(() => expect(screen.queryByRole('link', { name: 'Download MP4' })).not.toBeInTheDocument());
+    expect(screen.queryByText('Export checks found issues')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Render on this device' })).toBeEnabled();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:render-output');
   });
@@ -200,6 +224,40 @@ describe('Director Reel Studio render transactions', () => {
     expect(screen.getByLabelText('Visual effect layers')).toHaveTextContent('Pixel sort');
     expect(screen.getByLabelText('Visual effect layers')).toHaveTextContent('CRT scan');
     expect(screen.getByLabelText('Visual effect layers')).toHaveTextContent('Motion echo');
+  });
+
+  it('applies a three-effect stack that includes the migrated halftone reference plugin', () => {
+    render(<Harness />);
+    chooseOption('Visual effect', 'Halftone reveal');
+    fireEvent.click(screen.getByRole('button', { name: 'Add visual effect layer' }));
+    fireEvent.click(screen.getByRole('option', { name: /^CRT scan\b/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add visual effect layer' }));
+    fireEvent.click(screen.getByRole('option', { name: /^Motion echo\b/ }));
+
+    const state = JSON.parse(screen.getByTestId('project-state').textContent || '{}') as ReelProject;
+    expect(state.clips[0]).toMatchObject({
+      visualEffect: 'halftone-reveal',
+      visualEffectStack: ['halftone-reveal', 'crt-scan', 'motion-echo'],
+    });
+    expect(screen.getByLabelText('Visual effect layers')).toHaveTextContent('Halftone reveal');
+    expect(screen.getByText('Strength')).toBeInTheDocument();
+  });
+
+  it('moves a clip earlier through the timeline controls', () => {
+    const second = {
+      ...initialProject.clips[0],
+      id: 'clip-2',
+      title: 'Brutalist Silver',
+      transition: 'crossfade' as const,
+      transitionDuration: 0.4,
+    };
+    render(<Harness initial={{ ...initialProject, clips: [...initialProject.clips, second] }} />);
+
+    fireEvent.click(screen.getAllByTitle('Move earlier')[1]);
+
+    const state = JSON.parse(screen.getByTestId('project-state').textContent || '{}') as ReelProject;
+    expect(state.clips.map((clip) => clip.id)).toEqual(['clip-2', 'clip-1']);
+    expect(state.clips[0]).toMatchObject({ transition: 'cut', transitionDuration: 0 });
   });
 
   it('uses a non-first clip as the transition inspector source for select all', () => {

@@ -4,7 +4,7 @@ const REFERENCE_COLUMNS = 3;
 const REFERENCE_START = { x: 560, y: 220 };
 const REFERENCE_GAP = { x: 390, y: 390 };
 
-/** Keeps automatically added references clear of the corpus drawer and brief. */
+/** Keeps automatically added references clear of the local-library drawer and brief. */
 export function nextReferencePosition(objects: CanvasObject[]) {
   const index = objects.filter((item) => item.kind === 'reference').length;
   return {

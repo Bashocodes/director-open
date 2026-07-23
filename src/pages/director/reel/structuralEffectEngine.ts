@@ -14,6 +14,7 @@ export async function makeStructuralEffectFrameSequence(options: {
   intensity: number;
   seed: number;
   effectSeeds?: Partial<Record<StructuralEffectId, number>>;
+  pluginParams?: Partial<Record<string, Readonly<Record<string, unknown>>>>;
   duration: number;
   outputFps: number;
   signal?: AbortSignal;
@@ -62,6 +63,7 @@ export async function makeStructuralEffectFrameSequence(options: {
           seed: sample.seed,
           baseSeed: options.seed,
           effectSeeds: options.effectSeeds,
+          pluginParams: options.pluginParams,
           frameIndex,
           frameCount,
         },

@@ -1,0 +1,65 @@
+name: Feature request
+description: Propose a focused improvement to Director Open
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the user problem before proposing an implementation. Plugin
+        proposals should use the dedicated New plugin form.
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Who needs this, and what are they unable to do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe the smallest useful outcome, not just an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include current workarounds when applicable.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      options:
+        - Timeline or project editing
+        - Media import or persistence
+        - Preview or effects
+        - Export or export verification
+        - AI providers or action schemas
+        - Plugin authoring
+        - Accessibility
+        - Documentation or tooling
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Local-first and compatibility impact
+      description: Explain network, persistence, export, and existing-project implications.
+      placeholder: No new network access; existing persisted projects remain compatible.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched for an existing issue covering this request.
+          required: true
+        - label: This proposal keeps user media in the browser.
+          required: true

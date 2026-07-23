@@ -11,9 +11,9 @@ import type {
   StorySequence,
 } from '../../../shared/directorSchemas';
 import {
-  CANONICAL_REEL_VISUAL_EFFECTS,
   resolveReelVisualEffect,
 } from '../../../shared/reelVisualEffects';
+import { pluginRegistry } from '../../../plugins/registry';
 import type { CanvasObject } from '../types';
 import { reelGradeStack, reelVisualEffectStack, type ReelClip, type ReelProject } from './types';
 
@@ -24,55 +24,23 @@ const MAX_CLIP_DURATION = 12;
 const MIN_INTENSITY = 0;
 const MAX_INTENSITY = 100;
 const DEFAULT_CLIP_DURATION = 3.2;
-const PIXEL_SORT_DEFAULT_DURATION = 6.4;
+const PIXEL_SORT_DEFAULT_DURATION = pluginRegistry
+  .getEffect('pixel-sort', 'visual')?.preferredUntouchedDuration ?? 6.4;
 const DEFAULT_TRANSITION_DURATION = 0.45;
 const DEFAULT_INTENSITY = 62;
 
 const ELIGIBLE_KINDS = new Set(['reference', 'upload', 'created']);
 const ASPECT_RATIOS = ['9:16', '1:1', '16:9'] as const satisfies readonly ReelAspectRatio[];
 const QUALITIES = ['draft', 'balanced', 'high', 'maximum'] as const satisfies readonly ReelQuality[];
-const EFFECTS = [
-  'clean',
-  'cinematic',
-  'hdr',
-  'warm',
-  'cool',
-  'mono',
-  'dream',
-  'vignette',
-  'blur',
-  'punch',
-  'teal-orange',
-  'vintage-film',
-  'glow',
-  'bleach-bypass',
-] as const satisfies readonly ReelEffect[];
-const TRANSITIONS = [
-  'cut',
-  'crossfade',
-  'dip-black',
-  'slide-left',
-  'slide-right',
-  'zoom',
-  'soft-dissolve',
-] as const satisfies readonly ReelTransition[];
-const MOTIONS = [
-  'still',
-  'push-in',
-  'pull-out',
-  'pan-left',
-  'pan-right',
-  'pan-up',
-  'pan-down',
-  'drift-up-left',
-  'drift-down-right',
-  'pulse',
-  'hero-push',
-  'arc-left',
-  'arc-right',
-  'float',
-] as const satisfies readonly ReelMotion[];
-const VISUAL_EFFECTS = CANONICAL_REEL_VISUAL_EFFECTS satisfies readonly ReelVisualEffect[];
+
+export type ReelObjectMediaAvailability = (object: CanvasObject) => boolean;
+
+function hasBrowserLocalMedia(object: CanvasObject) {
+  return Boolean(
+    object.imageUrl
+    && (object.sourceFile || object.imageUrl.startsWith('data:image/')),
+  );
+}
 
 export type CompiledReelTimelineClip = {
   clipId: string;
@@ -111,50 +79,66 @@ function sameIds(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
-function eligibleObjects(objects: CanvasObject[]) {
+function eligibleObjects(
+  objects: CanvasObject[],
+  mediaAvailable: ReelObjectMediaAvailability = hasBrowserLocalMedia,
+) {
   const seen = new Set<string>();
   return objects.filter((object) => {
-    if (!object.imageUrl || !ELIGIBLE_KINDS.has(object.kind) || seen.has(object.id)) return false;
+    if (!mediaAvailable(object) || !ELIGIBLE_KINDS.has(object.kind) || seen.has(object.id)) return false;
     seen.add(object.id);
     return true;
   });
 }
 
-function requestedObjects(objects: CanvasObject[], ids: readonly string[]) {
+function requestedObjects(
+  objects: CanvasObject[],
+  ids: readonly string[],
+  mediaAvailable: ReelObjectMediaAvailability = hasBrowserLocalMedia,
+) {
   const wanted = new Set(uniqueIds(ids));
-  return eligibleObjects(objects).filter((object) => wanted.has(object.id));
+  return eligibleObjects(objects, mediaAvailable).filter((object) => wanted.has(object.id));
 }
 
 function normalizeClip(clip: ReelClip, index: number) {
   let duration = clampFinite(clip.duration, MIN_CLIP_DURATION, MAX_CLIP_DURATION, DEFAULT_CLIP_DURATION);
   const intensity = clampFinite(clip.intensity, MIN_INTENSITY, MAX_INTENSITY, DEFAULT_INTENSITY);
-  const transition = index === 0 ? 'cut' : clip.transition;
+  const requestedTransition = pluginRegistry.getTransition(clip.transition) ? clip.transition : 'crossfade';
+  const transition = index === 0 ? 'cut' : requestedTransition;
   const transitionDuration = transition === 'cut'
     ? 0
     : clampFinite(clip.transitionDuration, 0, MAX_TRANSITION_DURATION, DEFAULT_TRANSITION_DURATION);
-  const fallbackEffect = isOneOf(EFFECTS, clip.effect) ? clip.effect : 'clean';
+  const fallbackEffect = pluginRegistry.getEffect(clip.effect, 'grade') ? clip.effect : 'clean';
   const normalizedGradeStack = [...new Set(
     (clip.gradeStack?.length ? clip.gradeStack : [fallbackEffect])
-      .filter((item): item is ReelEffect => isOneOf(EFFECTS, item)),
+      .filter((item) => Boolean(pluginRegistry.getEffect(item, 'grade'))),
   )].slice(0, 5);
   if (!normalizedGradeStack.length) normalizedGradeStack.push(fallbackEffect);
   const gradeStack = clip.gradeStack ? normalizedGradeStack : undefined;
   const effect = gradeStack?.[0] || fallbackEffect;
-  const fallbackVisualEffect = isOneOf(VISUAL_EFFECTS, clip.visualEffect)
-    ? clip.visualEffect
+  const requestedVisualEffect = resolveReelVisualEffect(clip.visualEffect)?.id
+    ?? clip.visualEffect
+    ?? 'none';
+  const fallbackVisualEffect = pluginRegistry.getEffect(requestedVisualEffect, 'visual')
+    ? requestedVisualEffect
     : 'none';
   const normalizedVisualEffectStack = [...new Set(
     (clip.visualEffectStack?.length ? clip.visualEffectStack : [fallbackVisualEffect])
-      .filter((item): item is ReelVisualEffect => isOneOf(VISUAL_EFFECTS, item) && item !== 'none'),
+      .map((item) => resolveReelVisualEffect(item)?.id ?? item)
+      .filter((item) => item !== 'none' && Boolean(pluginRegistry.getEffect(item, 'visual'))),
   )].slice(0, 5);
   const visualEffectStack = clip.visualEffectStack ? normalizedVisualEffectStack : undefined;
   const visualEffect = visualEffectStack?.[0] || fallbackVisualEffect;
+  const motion = pluginRegistry.getMotion(clip.motion) ? clip.motion : 'still';
+  const preferredUntouchedDuration = normalizedVisualEffectStack
+    .map((id) => pluginRegistry.getEffect(id, 'visual')?.preferredUntouchedDuration ?? 0)
+    .reduce((maximum, candidate) => Math.max(maximum, candidate), 0);
   if (
     duration === DEFAULT_CLIP_DURATION
     && clip.durationWasUserSet !== true
-    && (visualEffect === 'pixel-sort' || normalizedVisualEffectStack.includes('pixel-sort'))
+    && preferredUntouchedDuration > 0
   ) {
-    duration = PIXEL_SORT_DEFAULT_DURATION;
+    duration = preferredUntouchedDuration;
   }
   if (
     duration === clip.duration
@@ -163,6 +147,7 @@ function normalizeClip(clip: ReelClip, index: number) {
     && transitionDuration === clip.transitionDuration
     && effect === clip.effect
     && visualEffect === clip.visualEffect
+    && motion === clip.motion
     && (!clip.gradeStack || sameIds(gradeStack || [], clip.gradeStack))
     && (!clip.visualEffectStack || sameIds(visualEffectStack || [], clip.visualEffectStack))
   ) return clip;
@@ -176,6 +161,7 @@ function normalizeClip(clip: ReelClip, index: number) {
     visualEffectStack,
     transition,
     transitionDuration,
+    motion,
   };
 }
 
@@ -249,10 +235,10 @@ function sanitizeAction(action: DirectorReelAction): CanonicalDirectorReelAction
     return {
       ...canonical,
       clipIds: uniqueIds(action.clipIds),
-      effect: isOneOf(EFFECTS, action.effect) ? action.effect : null,
+      effect: action.effect && pluginRegistry.getEffect(action.effect, 'grade') ? action.effect : null,
       visualEffect: resolveReelVisualEffect(action.visualEffect)?.id ?? null,
-      transition: isOneOf(TRANSITIONS, action.transition) ? action.transition : null,
-      motion: isOneOf(MOTIONS, action.motion) ? action.motion : null,
+      transition: action.transition && pluginRegistry.getTransition(action.transition) ? action.transition : null,
+      motion: action.motion && pluginRegistry.getMotion(action.motion) ? action.motion : null,
       duration,
       intensity,
       caption: typeof action.caption === 'string' ? action.caption.slice(0, 180) : null,
@@ -274,8 +260,9 @@ function clipFromObject(
   index: number,
   createId: (prefix: string) => string,
   sequence?: StorySequence | null,
+  mediaAvailable: ReelObjectMediaAvailability = hasBrowserLocalMedia,
 ): ReelClip | null {
-  if (!object.imageUrl || !ELIGIBLE_KINDS.has(object.kind)) return null;
+  if (!mediaAvailable(object) || !object.imageUrl || !ELIGIBLE_KINDS.has(object.kind)) return null;
   const beat = sequence?.beats[index];
   const motions = ['push-in', 'pan-right', 'pull-out', 'pan-left'] as const;
   return {
@@ -283,6 +270,7 @@ function clipFromObject(
     objectId: object.id,
     title: beat?.title || object.title,
     imageUrl: object.imageUrl,
+    sourceFile: object.sourceFile,
     duration: DEFAULT_CLIP_DURATION,
     durationWasUserSet: false,
     effect: index % 3 === 0 ? 'cinematic' : 'clean',
@@ -300,13 +288,14 @@ export function createReelProject(
   selectedObjectIds: string[],
   createId: (prefix: string) => string,
   sequence?: StorySequence | null,
+  mediaAvailable: ReelObjectMediaAvailability = hasBrowserLocalMedia,
 ): ReelProject {
-  const candidates = eligibleObjects(objects);
+  const candidates = eligibleObjects(objects, mediaAvailable);
   const selected = new Set(uniqueIds(selectedObjectIds));
   const preferred = candidates.filter((object) => selected.has(object.id));
   const sources = (preferred.length ? preferred : candidates).slice(0, MAX_CLIPS);
   const clips = sources.flatMap((object, index) => {
-    const clip = clipFromObject(object, index, createId, sequence);
+    const clip = clipFromObject(object, index, createId, sequence, mediaAvailable);
     return clip ? [clip] : [];
   });
   return {
@@ -326,8 +315,15 @@ function createReelProjectFromSources(
   sources: CanvasObject[],
   createId: (prefix: string) => string,
   sequence?: StorySequence | null,
+  mediaAvailable: ReelObjectMediaAvailability = hasBrowserLocalMedia,
 ) {
-  return createReelProject(sources, sources.map((source) => source.id), createId, sequence);
+  return createReelProject(
+    sources,
+    sources.map((source) => source.id),
+    createId,
+    sequence,
+    mediaAvailable,
+  );
 }
 
 function addObjects(
@@ -336,14 +332,23 @@ function addObjects(
   objectIds: string[],
   explicitTarget: boolean,
   createId: (prefix: string) => string,
+  mediaAvailable: ReelObjectMediaAvailability = hasBrowserLocalMedia,
 ) {
   const normalized = normalizeReelProject(project);
   const known = new Set(normalized.clips.map((clip) => clip.objectId).filter((id): id is string => Boolean(id)));
-  const candidates = (explicitTarget ? requestedObjects(objects, objectIds) : eligibleObjects(objects))
+  const candidates = (explicitTarget
+    ? requestedObjects(objects, objectIds, mediaAvailable)
+    : eligibleObjects(objects, mediaAvailable))
     .filter((object) => !known.has(object.id));
   const available = Math.max(0, MAX_CLIPS - normalized.clips.length);
   const added = candidates.slice(0, available).flatMap((object, index) => {
-    const clip = clipFromObject(object, normalized.clips.length + index, createId);
+    const clip = clipFromObject(
+      object,
+      normalized.clips.length + index,
+      createId,
+      undefined,
+      mediaAvailable,
+    );
     return clip ? [clip] : [];
   });
   if (!added.length) return { project: normalized, added };
@@ -375,6 +380,7 @@ function clipsEqualForEdit(left: ReelClip, right: ReelClip) {
     && left.duration === right.duration
     && Boolean(left.durationWasUserSet) === Boolean(right.durationWasUserSet)
     && left.intensity === right.intensity
+    && JSON.stringify(left.pluginParams || {}) === JSON.stringify(right.pluginParams || {})
     && left.caption === right.caption;
 }
 
@@ -389,11 +395,13 @@ export function applyDirectorReelActions(options: {
   selectedObjectIds: string[];
   sequence: StorySequence | null;
   createId: (prefix: string) => string;
+  isObjectMediaAvailable?: ReelObjectMediaAvailability;
 }) {
   let project = options.project ? normalizeReelProject(options.project) : null;
   let shouldOpen = false;
   const appliedActions: AppliedDirectorReelAction[] = [];
   const visualEffectSubstitutionNotices: string[] = [];
+  const mediaAvailable = options.isObjectMediaAvailable ?? hasBrowserLocalMedia;
 
   for (const unsafeAction of options.actions) {
     const visualEffectResolution = resolveReelVisualEffect(unsafeAction.visualEffect);
@@ -408,15 +416,31 @@ export function applyDirectorReelActions(options: {
       let addedObjectIds: string[] = [];
       if (!project) {
         const sources = explicitObjects
-          ? requestedObjects(options.objects, action.objectIds)
+          ? requestedObjects(options.objects, action.objectIds, mediaAvailable)
           : (() => {
-            const selected = requestedObjects(options.objects, options.selectedObjectIds);
-            return selected.length ? selected : eligibleObjects(options.objects);
+            const selected = requestedObjects(
+              options.objects,
+              options.selectedObjectIds,
+              mediaAvailable,
+            );
+            return selected.length ? selected : eligibleObjects(options.objects, mediaAvailable);
           })();
-        project = createReelProjectFromSources(sources.slice(0, MAX_CLIPS), options.createId, options.sequence);
+        project = createReelProjectFromSources(
+          sources.slice(0, MAX_CLIPS),
+          options.createId,
+          options.sequence,
+          mediaAvailable,
+        );
         addedObjectIds = project.clips.flatMap((clip) => clip.objectId ? [clip.objectId] : []);
       } else if (project.clips.length === 0) {
-        const result = addObjects(project, options.objects, action.objectIds, explicitObjects, options.createId);
+        const result = addObjects(
+          project,
+          options.objects,
+          action.objectIds,
+          explicitObjects,
+          options.createId,
+          mediaAvailable,
+        );
         project = result.project;
         addedObjectIds = result.added.flatMap((clip) => clip.objectId ? [clip.objectId] : []);
       }
@@ -428,19 +452,35 @@ export function applyDirectorReelActions(options: {
     if (action.type === 'add_clips') {
       if (!project) {
         const sources = explicitObjects
-          ? requestedObjects(options.objects, action.objectIds)
+          ? requestedObjects(options.objects, action.objectIds, mediaAvailable)
           : (() => {
-            const selected = requestedObjects(options.objects, options.selectedObjectIds);
-            return selected.length ? selected : eligibleObjects(options.objects);
+            const selected = requestedObjects(
+              options.objects,
+              options.selectedObjectIds,
+              mediaAvailable,
+            );
+            return selected.length ? selected : eligibleObjects(options.objects, mediaAvailable);
           })();
         if (!sources.length) continue;
-        project = createReelProjectFromSources(sources.slice(0, MAX_CLIPS), options.createId, options.sequence);
+        project = createReelProjectFromSources(
+          sources.slice(0, MAX_CLIPS),
+          options.createId,
+          options.sequence,
+          mediaAvailable,
+        );
         const objectIds = project.clips.flatMap((clip) => clip.objectId ? [clip.objectId] : []);
         appliedActions.push({ ...action, objectIds });
         shouldOpen = true;
         continue;
       }
-      const result = addObjects(project, options.objects, action.objectIds, explicitObjects, options.createId);
+      const result = addObjects(
+        project,
+        options.objects,
+        action.objectIds,
+        explicitObjects,
+        options.createId,
+        mediaAvailable,
+      );
       project = result.project;
       if (!result.added.length) continue;
       appliedActions.push({
@@ -457,7 +497,13 @@ export function applyDirectorReelActions(options: {
         || action.type === 'reorder_clips'
         || action.type === 'style_clips'
       )) continue;
-      project = createReelProject(options.objects, options.selectedObjectIds, options.createId, options.sequence);
+      project = createReelProject(
+        options.objects,
+        options.selectedObjectIds,
+        options.createId,
+        options.sequence,
+        mediaAvailable,
+      );
     }
 
     if (action.type === 'remove_clips') {
@@ -546,7 +592,9 @@ export function applyDirectorReelActions(options: {
         const nextClip = next.clips.find((clip) => clip.id === id);
         return previousClip?.duration === DEFAULT_CLIP_DURATION
           && previousClip.durationWasUserSet !== true
+          && Boolean(nextClip)
           && nextClip?.duration === PIXEL_SORT_DEFAULT_DURATION
+          && nextClip !== undefined
           && reelVisualEffectStack(nextClip).includes('pixel-sort');
       });
       project = next;
@@ -650,10 +698,10 @@ export function toReelProjectContext(project: ReelProject | null, open: boolean)
       objectId: clip.objectId,
       title: (clip.sourceFile ? `Local image ${index + 1}` : clip.title).slice(0, 240),
       duration: clip.duration,
-      effect: clip.effect,
-      visualEffect: clip.visualEffect || 'none',
-      transition: clip.transition,
-      motion: clip.motion,
+      effect: clip.effect as ReelEffect,
+      visualEffect: (clip.visualEffect || 'none') as ReelVisualEffect,
+      transition: clip.transition as ReelTransition,
+      motion: clip.motion as ReelMotion,
       intensity: clip.intensity,
       caption: clip.caption,
     })),

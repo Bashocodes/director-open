@@ -1,114 +1,34 @@
 import { z } from 'zod';
+import { DEFAULT_DIRECTOR_MODEL } from '../../shared/directorSchemas';
 import {
-  ContinuityReportSchema,
-  DEFAULT_DIRECTOR_MODEL,
-  DirectionContractSchema,
-  DirectorModelSchema,
-  DirectorResponseSchema,
-  InheritanceChannelSchema,
-  ReelAspectRatioSchema,
-  ReelEffectSchema,
-  ReelMotionSchema,
-  ReelQualitySchema,
-  ReelTransitionSchema,
-  ReelVisualEffectSchema,
-  StorySequenceSchema,
-  VisualSummarySchema,
-} from '../../shared/directorSchemas';
-import { resolveReelVisualEffect } from '../../shared/reelVisualEffects';
+  createDirectorLocalMediaReference,
+  DIRECTOR_PROJECT_FILE_VERSION,
+  DirectorProjectFileSchema,
+  isDirectorLocalMediaReference,
+  MAX_DIRECTOR_PROJECT_MESSAGES,
+  migrateDirectorProjectValue,
+  safeParseDirectorProjectFile,
+  type DirectorProjectFile,
+} from '../../shared/directorProject';
 import type { ReelProject } from './reel/types';
 import type { CanvasMode, CanvasObject, ChatTurn } from './types';
 
 const ACTIVE_PROJECT_KEY = 'director-open.active-project.v1';
 const PROJECT_HISTORY_KEY = 'director-open.project-history.v1';
 const GPT_5_4_DEFAULT_MIGRATION_KEY = 'director-open.default-model.gpt-5.4.v1';
-const STORAGE_VERSION = 1;
 const MAX_HISTORY_ENTRIES = 8;
-const MAX_PERSISTED_MESSAGES = 120;
-
-const CanvasModeSchema = z.enum(['inspect', 'inherit', 'combine', 'create', 'animate', 'export']);
-const CanvasObjectSchema = z.object({
-  id: z.string().max(160),
-  assetId: z.string().max(160).optional(),
-  title: z.string().max(240),
-  subtitle: z.string().max(1_000),
-  kind: z.enum(['reference', 'upload', 'created', 'contract', 'beat']),
-  source: z.enum(['UPLOAD', 'CREATED', 'CONTRACT', 'STORY']),
-  imageUrl: z.string().max(20_000).optional(),
-  previewUrl: z.string().max(20_000).optional(),
-  position: z.object({ x: z.number().finite(), y: z.number().finite() }).strict(),
-  inherit: z.array(InheritanceChannelSchema).max(8),
-  locks: z.array(z.string().max(240)).max(20),
-  summary: VisualSummarySchema,
-}).strict();
-
-const ChatTurnSchema = z.object({
-  id: z.string().max(160),
-  role: z.enum(['user', 'assistant']),
-  text: z.string().max(20_000),
-  label: z.string().max(240).optional(),
-  error: z.boolean().optional(),
-  response: DirectorResponseSchema.optional(),
-}).strict();
-
-const ReelClipSchema = z.object({
-  id: z.string().max(160),
-  objectId: z.string().max(160).nullable(),
-  title: z.string().max(240),
-  imageUrl: z.string().max(20_000),
-  duration: z.number().finite(),
-  durationWasUserSet: z.boolean().optional(),
-  effect: ReelEffectSchema,
-  gradeStack: z.array(ReelEffectSchema).max(5).optional(),
-  visualEffect: ReelVisualEffectSchema.default('none'),
-  visualEffectStack: z.array(ReelVisualEffectSchema).max(5).optional(),
-  transition: ReelTransitionSchema,
-  transitionDuration: z.number().finite(),
-  motion: ReelMotionSchema,
-  intensity: z.number().finite(),
-  caption: z.string().max(180),
-}).strict();
-
-const ReelProjectSchema = z.object({
-  id: z.string().max(160),
-  title: z.string().max(240),
-  aspectRatio: ReelAspectRatioSchema,
-  fps: z.union([z.literal(24), z.literal(30)]),
-  quality: ReelQualitySchema,
-  clips: z.array(ReelClipSchema).max(16),
-  selectedClipIds: z.array(z.string().max(160)).max(16),
-  audio: z.null(),
-  renderRequested: z.boolean(),
-}).strict();
-
-const PersistedProjectSchema = z.object({
-  version: z.literal(STORAGE_VERSION),
-  sessionId: z.string().min(8).max(100),
-  updatedAt: z.string().datetime(),
-  title: z.string().min(1).max(240),
-  objects: z.array(CanvasObjectSchema).max(120),
-  selectedIds: z.array(z.string().max(160)).max(120),
-  mode: CanvasModeSchema,
-  goal: z.string().max(1_000),
-  exclusions: z.array(z.string().max(160)).max(24),
-  contract: DirectionContractSchema.nullable(),
-  sequence: StorySequenceSchema.nullable(),
-  continuity: ContinuityReportSchema.nullable(),
-  reelProject: ReelProjectSchema.nullable(),
-  reelOpen: z.boolean(),
-  visibleSearch: z.null(),
-  messages: z.array(ChatTurnSchema).max(MAX_PERSISTED_MESSAGES),
-  model: DirectorModelSchema,
-  localMediaOmitted: z.number().int().min(0).max(32),
-}).strict();
+const DATABASE_NAME = 'director-open';
+const DATABASE_VERSION = 1;
+const ACTIVE_PROJECT_STORE = 'active-project';
+const ACTIVE_PROJECT_RECORD_KEY = 'active';
 
 const HistoryEntrySchema = z.object({
   id: z.string().min(1).max(240),
-  project: PersistedProjectSchema,
+  project: DirectorProjectFileSchema,
 }).strict();
 const HistorySchema = z.array(HistoryEntrySchema).max(MAX_HISTORY_ENTRIES);
 
-type PersistedProjectData = z.infer<typeof PersistedProjectSchema>;
+type PersistedProjectData = DirectorProjectFile;
 
 export type DirectorPersistedProject = Omit<
   PersistedProjectData,
@@ -134,6 +54,25 @@ type ProjectInput = Omit<
   'version' | 'updatedAt' | 'title' | 'localMediaOmitted' | 'reelProject'
 > & { reelProject: ReelProject | null };
 
+type RuntimeMediaSource = Pick<ProjectInput, 'objects' | 'reelProject'>;
+
+type StoredMediaBlob = {
+  target: 'object' | 'clip' | 'audio';
+  id: string;
+  bytes: ArrayBuffer;
+  name: string;
+  type: string;
+  lastModified: number;
+};
+
+type IndexedDbProjectRecord = {
+  key: typeof ACTIVE_PROJECT_RECORD_KEY;
+  project: DirectorPersistedProject;
+  media: StoredMediaBlob[];
+};
+
+export type DirectorPersistenceResult = 'saved' | 'quota' | 'unavailable';
+
 function storage() {
   try {
     return typeof window === 'undefined' ? null : window.localStorage;
@@ -148,76 +87,18 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-/** Upgrade retired visual-effect ids before the canonical persistence schema sees them. */
-function migratePersistedVisualEffects(value: unknown) {
-  const project = record(value);
-  const reelProject = record(project?.reelProject);
-  if (!project || !reelProject || !Array.isArray(reelProject.clips)) return value;
-  const notices: string[] = [];
-  const clips = reelProject.clips.map((rawClip) => {
-    const clip = record(rawClip);
-    if (!clip) return rawClip;
-    const base = resolveReelVisualEffect(clip.visualEffect);
-    if (base?.notice && !notices.includes(base.notice)) notices.push(base.notice);
-    const hasStack = Array.isArray(clip.visualEffectStack);
-    const stack = hasStack
-      ? (clip.visualEffectStack as unknown[]).flatMap((rawEffect) => {
-        const resolution = resolveReelVisualEffect(rawEffect);
-        if (resolution?.notice && !notices.includes(resolution.notice)) notices.push(resolution.notice);
-        return resolution && resolution.id !== 'none' ? [resolution.id] : [];
-      }).filter((effect, index, effects) => effects.indexOf(effect) === index).slice(0, 5)
-      : [];
-    if (!base && !hasStack) return rawClip;
-    return {
-      ...clip,
-      visualEffect: hasStack ? stack[0] || 'none' : base?.id ?? clip.visualEffect,
-      ...(hasStack ? { visualEffectStack: stack } : {}),
-    };
-  });
-  if (!notices.length) return { ...project, reelProject: { ...reelProject, clips } };
-  const messages = Array.isArray(project.messages) ? project.messages : [];
-  const receiptId = `visual-effect-migration-v2-${String(project.sessionId || 'project')}`.slice(0, 160);
-  const hasReceipt = messages.some((message) => record(message)?.id === receiptId);
-  const migratedMessages = hasReceipt ? messages : [
-    ...messages.slice(-(MAX_PERSISTED_MESSAGES - 1)),
-    {
-      id: receiptId,
-      role: 'assistant',
-      label: 'Restored project update',
-      text: `Restored project update: ${notices.join(' ')}`,
-    },
-  ];
-  return {
-    ...project,
-    reelProject: { ...reelProject, clips },
-    messages: migratedMessages,
-  };
-}
-
-/** Preserve saved projects after retiring the previous OpenAI picker aliases. */
-function migratePersistedDirectorModel(value: unknown) {
-  const project = record(value);
-  if (!project) return value;
-  const model = project.model === 'gpt-5.6-sol'
-    ? 'gpt-5.4'
-    : project.model === 'gpt-5.6-terra'
-      ? 'gpt-5.4-mini'
-      : project.model;
-  return model === project.model ? project : { ...project, model };
-}
-
-function migratePersistedProject(value: unknown) {
-  return migratePersistedDirectorModel(migratePersistedVisualEffects(value));
-}
-
 function parseProject(value: string | null) {
   if (!value) return null;
   try {
-    const parsed = PersistedProjectSchema.safeParse(migratePersistedProject(JSON.parse(value)));
-    return parsed.success ? parsed.data as DirectorPersistedProject : null;
+    return parseProjectValue(JSON.parse(value));
   } catch {
     return null;
   }
+}
+
+function parseProjectValue(value: unknown) {
+  const parsed = safeParseDirectorProjectFile(value);
+  return parsed.success ? parsed.data as DirectorPersistedProject : null;
 }
 
 function promoteLegacyActiveDefault(
@@ -233,7 +114,7 @@ function promoteLegacyActiveDefault(
   if (project?.model === 'gemini-3.5-flash') {
     const migrated = { ...project, model: DEFAULT_DIRECTOR_MODEL };
     try {
-      local.setItem(ACTIVE_PROJECT_KEY, JSON.stringify(PersistedProjectSchema.parse(migrated)));
+      local.setItem(ACTIVE_PROJECT_KEY, JSON.stringify(DirectorProjectFileSchema.parse(migrated)));
       local.setItem(GPT_5_4_DEFAULT_MIGRATION_KEY, '1');
     } catch {
       // The in-memory upgrade is still safe when storage becomes unavailable.
@@ -256,7 +137,9 @@ function readHistory() {
     const migrated = Array.isArray(raw)
       ? raw.map((entry) => {
         const candidate = record(entry);
-        return candidate ? { ...candidate, project: migratePersistedProject(candidate.project) } : entry;
+        return candidate
+          ? { ...candidate, project: migrateDirectorProjectValue(candidate.project) }
+          : entry;
       })
       : raw;
     const parsed = HistorySchema.safeParse(migrated);
@@ -266,10 +149,8 @@ function readHistory() {
   }
 }
 
-function restorableMediaUrl(url: string | undefined) {
-  if (!url || url.startsWith('blob:')) return false;
-  return url.startsWith('/') || url.startsWith('https://') || url.startsWith('http://')
-    || (url.startsWith('data:image/') && url.length <= 20_000);
+function generatedMediaUrl(url: string | undefined) {
+  return Boolean(url?.startsWith('data:image/') && url.length <= 20_000);
 }
 
 function projectTitle(input: ProjectInput) {
@@ -281,19 +162,32 @@ function projectTitle(input: ProjectInput) {
 export function makePersistableDirectorProject(input: ProjectInput): DirectorPersistedProject | null {
   let localMediaOmitted = 0;
   const objects = input.objects.map((object) => {
-    if (!object.imageUrl || restorableMediaUrl(object.imageUrl)) return object;
+    const { sourceFile, previewUrl: _previewUrl, ...serializable } = object;
+    if (sourceFile) {
+      localMediaOmitted += 1;
+      return {
+        ...serializable,
+        imageUrl: createDirectorLocalMediaReference('object', object.id),
+      };
+    }
+    if (!object.imageUrl || generatedMediaUrl(object.imageUrl)) return serializable;
     localMediaOmitted += 1;
-    const { imageUrl: _imageUrl, ...rest } = object;
-    return rest;
+    const { imageUrl: _imageUrl, ...withoutMedia } = serializable;
+    return withoutMedia;
   });
   const reelProject = input.reelProject ? (() => {
     const clips = input.reelProject!.clips.flatMap((clip) => {
-      if (clip.sourceFile || !restorableMediaUrl(clip.imageUrl)) {
+      const { sourceFile, ...serializable } = clip;
+      if (sourceFile) {
         localMediaOmitted += 1;
-        return [];
+        return [{
+          ...serializable,
+          imageUrl: createDirectorLocalMediaReference('clip', clip.id),
+        }];
       }
-      const { sourceFile: _sourceFile, ...persisted } = clip;
-      return [persisted];
+      if (generatedMediaUrl(clip.imageUrl)) return [serializable];
+      localMediaOmitted += 1;
+      return [];
     });
     if (input.reelProject!.audio) localMediaOmitted += 1;
     const knownClipIds = new Set(clips.map((clip) => clip.id));
@@ -307,30 +201,31 @@ export function makePersistableDirectorProject(input: ProjectInput): DirectorPer
   const selectedIds = input.selectedIds.filter((id) => objects.some((object) => object.id === id));
   const candidate = {
     ...input,
-    version: 1 as const,
+    version: DIRECTOR_PROJECT_FILE_VERSION,
     updatedAt: new Date().toISOString(),
     title: projectTitle(input),
     objects,
     selectedIds,
     reelProject,
     reelOpen: Boolean(input.reelOpen && reelProject),
-    messages: input.messages.slice(-MAX_PERSISTED_MESSAGES),
+    messages: input.messages.slice(-MAX_DIRECTOR_PROJECT_MESSAGES),
     localMediaOmitted,
   };
-  const parsed = PersistedProjectSchema.safeParse(candidate);
+  const parsed = DirectorProjectFileSchema.safeParse(candidate);
   return parsed.success ? parsed.data as DirectorPersistedProject : null;
 }
 
 export function loadActiveDirectorProject() {
   const local = storage();
-  return promoteLegacyActiveDefault(local, parseProject(local?.getItem(ACTIVE_PROJECT_KEY) || null));
+  const project = promoteLegacyActiveDefault(local, parseProject(local?.getItem(ACTIVE_PROJECT_KEY) || null));
+  return project ? withoutUnavailableMedia(project) : null;
 }
 
 export function saveActiveDirectorProject(project: DirectorPersistedProject) {
   const local = storage();
   if (!local) return false;
   try {
-    local.setItem(ACTIVE_PROJECT_KEY, JSON.stringify(PersistedProjectSchema.parse(project)));
+    local.setItem(ACTIVE_PROJECT_KEY, JSON.stringify(DirectorProjectFileSchema.parse(project)));
     return true;
   } catch {
     return false;
@@ -345,6 +240,274 @@ export function clearActiveDirectorProject() {
   }
 }
 
+function withoutUnavailableMedia(project: DirectorPersistedProject) {
+  let missing = project.localMediaOmitted;
+  const objects = project.objects.map((object) => {
+    if (!object.imageUrl || generatedMediaUrl(object.imageUrl)) return object;
+    missing += project.localMediaOmitted ? 0 : 1;
+    const { imageUrl: _imageUrl, previewUrl: _previewUrl, ...withoutMedia } = object;
+    return withoutMedia;
+  });
+  const reelProject = project.reelProject ? (() => {
+    const clips = project.reelProject!.clips.filter((clip) => {
+      const available = generatedMediaUrl(clip.imageUrl);
+      if (!available && !project.localMediaOmitted) missing += 1;
+      return available;
+    });
+    const clipIds = new Set(clips.map((clip) => clip.id));
+    return {
+      ...project.reelProject!,
+      clips,
+      selectedClipIds: project.reelProject!.selectedClipIds.filter((id) => clipIds.has(id)),
+      audio: null,
+    };
+  })() : null;
+  return {
+    ...project,
+    objects,
+    reelProject,
+    reelOpen: Boolean(project.reelOpen && reelProject),
+    localMediaOmitted: missing,
+  };
+}
+
+function databaseFactory() {
+  try {
+    return typeof indexedDB === 'undefined' ? null : indexedDB;
+  } catch {
+    return null;
+  }
+}
+
+function openDirectorDatabase() {
+  const factory = databaseFactory();
+  if (!factory) return Promise.resolve<IDBDatabase | null>(null);
+  return new Promise<IDBDatabase | null>((resolve, reject) => {
+    const request = factory.open(DATABASE_NAME, DATABASE_VERSION);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(ACTIVE_PROJECT_STORE)) {
+        database.createObjectStore(ACTIVE_PROJECT_STORE, { keyPath: 'key' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('IndexedDB is unavailable.'));
+    request.onblocked = () => reject(new Error('IndexedDB upgrade is blocked.'));
+  });
+}
+
+function transactionDone(transaction: IDBTransaction) {
+  return new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed.'));
+    transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction was aborted.'));
+  });
+}
+
+function requestValue<T>(request: IDBRequest<T>) {
+  return new Promise<T>((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('IndexedDB request failed.'));
+  });
+}
+
+function readFileBytes(file: File) {
+  if (typeof file.arrayBuffer === 'function') return file.arrayBuffer();
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(reader.error || new Error(`Could not read ${file.name}.`));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function storedBlob(target: StoredMediaBlob['target'], id: string, file: File): Promise<StoredMediaBlob> {
+  return {
+    target,
+    id,
+    bytes: await readFileBytes(file),
+    name: file.name,
+    type: file.type,
+    lastModified: file.lastModified,
+  };
+}
+
+async function localMedia(runtime: RuntimeMediaSource) {
+  const pending: Array<Promise<StoredMediaBlob>> = [];
+  const objectFiles = new Map(runtime.objects.flatMap((object) => (
+    object.sourceFile ? [[object.id, object.sourceFile] as const] : []
+  )));
+  for (const object of runtime.objects) {
+    if (object.sourceFile) pending.push(storedBlob('object', object.id, object.sourceFile));
+  }
+  for (const clip of runtime.reelProject?.clips || []) {
+    const objectFile = clip.objectId ? objectFiles.get(clip.objectId) : undefined;
+    const sharesObjectMedia = Boolean(
+      clip.sourceFile
+      && objectFile
+      && clip.sourceFile.name === objectFile.name
+      && clip.sourceFile.size === objectFile.size
+      && clip.sourceFile.type === objectFile.type
+      && clip.sourceFile.lastModified === objectFile.lastModified,
+    );
+    if (clip.sourceFile && !sharesObjectMedia) {
+      pending.push(storedBlob('clip', clip.id, clip.sourceFile));
+    }
+  }
+  if (runtime.reelProject?.audio) {
+    pending.push(storedBlob('audio', 'audio', runtime.reelProject.audio.sourceFile));
+  }
+  return Promise.all(pending);
+}
+
+function quotaExceeded(error: unknown) {
+  return error instanceof DOMException
+    ? error.name === 'QuotaExceededError'
+    : Boolean(error && typeof error === 'object' && 'name' in error
+      && (error as { name?: unknown }).name === 'QuotaExceededError');
+}
+
+export async function saveActiveDirectorProjectToIndexedDb(
+  project: DirectorPersistedProject,
+  runtime: RuntimeMediaSource,
+  signal?: AbortSignal,
+): Promise<DirectorPersistenceResult> {
+  const parsed = parseProjectValue(project);
+  if (!parsed || signal?.aborted) return 'unavailable';
+  let database: IDBDatabase | null = null;
+  try {
+    database = await openDirectorDatabase();
+    if (!database || signal?.aborted) return 'unavailable';
+    const media = await localMedia(runtime);
+    if (signal?.aborted) return 'unavailable';
+    const transaction = database.transaction(ACTIVE_PROJECT_STORE, 'readwrite');
+    transaction.objectStore(ACTIVE_PROJECT_STORE).put({
+      key: ACTIVE_PROJECT_RECORD_KEY,
+      project: parsed,
+      media,
+    } satisfies IndexedDbProjectRecord);
+    await transactionDone(transaction);
+    return 'saved';
+  } catch (error) {
+    return quotaExceeded(error) ? 'quota' : 'unavailable';
+  } finally {
+    database?.close();
+  }
+}
+
+function restoreFile(media: StoredMediaBlob) {
+  return new File([media.bytes], media.name, {
+    type: media.type,
+    lastModified: media.lastModified,
+  });
+}
+
+function hydrateIndexedDbProject(project: DirectorPersistedProject, media: StoredMediaBlob[]) {
+  const mediaByTarget = new Map(media.map((item) => [`${item.target}:${item.id}`, item]));
+  const createdUrls: string[] = [];
+  let missing = 0;
+  try {
+    const objects = project.objects.map((object) => {
+      if (!isDirectorLocalMediaReference(object.imageUrl, 'object')) {
+        if (!object.imageUrl || generatedMediaUrl(object.imageUrl)) return object;
+        missing += 1;
+        const { imageUrl: _imageUrl, previewUrl: _previewUrl, ...withoutMedia } = object;
+        return withoutMedia;
+      }
+      const stored = mediaByTarget.get(`object:${object.id}`);
+      if (!stored) {
+        missing += 1;
+        const { imageUrl: _imageUrl, previewUrl: _previewUrl, ...withoutMedia } = object;
+        return withoutMedia;
+      }
+      const sourceFile = restoreFile(stored);
+      const imageUrl = URL.createObjectURL(sourceFile);
+      createdUrls.push(imageUrl);
+      return { ...object, imageUrl, sourceFile };
+    });
+
+    const reelProject = project.reelProject ? (() => {
+      const clips = project.reelProject!.clips.flatMap((clip) => {
+        if (!isDirectorLocalMediaReference(clip.imageUrl, 'clip')) {
+          if (generatedMediaUrl(clip.imageUrl)) return [clip];
+          missing += 1;
+          return [];
+        }
+        const stored = mediaByTarget.get(`clip:${clip.id}`)
+          || (clip.objectId ? mediaByTarget.get(`object:${clip.objectId}`) : undefined);
+        if (!stored) {
+          missing += 1;
+          return [];
+        }
+        const sourceFile = restoreFile(stored);
+        const imageUrl = URL.createObjectURL(sourceFile);
+        createdUrls.push(imageUrl);
+        return [{ ...clip, imageUrl, sourceFile }];
+      });
+      const selectedClipIds = new Set(clips.map((clip) => clip.id));
+      const storedAudio = mediaByTarget.get('audio:audio');
+      const audio = storedAudio ? (() => {
+        const sourceFile = restoreFile(storedAudio);
+        const url = URL.createObjectURL(sourceFile);
+        createdUrls.push(url);
+        return { name: sourceFile.name, sourceFile, url };
+      })() : null;
+      return {
+        ...project.reelProject!,
+        clips,
+        selectedClipIds: project.reelProject!.selectedClipIds.filter((id) => selectedClipIds.has(id)),
+        audio,
+      };
+    })() : null;
+
+    return {
+      ...project,
+      objects,
+      reelProject,
+      reelOpen: Boolean(project.reelOpen && reelProject),
+      localMediaOmitted: missing,
+    };
+  } catch (error) {
+    createdUrls.forEach((url) => URL.revokeObjectURL(url));
+    throw error;
+  }
+}
+
+export async function loadActiveDirectorProjectFromIndexedDb() {
+  let database: IDBDatabase | null = null;
+  try {
+    database = await openDirectorDatabase();
+    if (!database) return null;
+    const transaction = database.transaction(ACTIVE_PROJECT_STORE, 'readonly');
+    const value = await requestValue(
+      transaction.objectStore(ACTIVE_PROJECT_STORE).get(ACTIVE_PROJECT_RECORD_KEY),
+    ) as IndexedDbProjectRecord | undefined;
+    await transactionDone(transaction);
+    if (!value || !Array.isArray(value.media)) return null;
+    const project = parseProjectValue(value.project);
+    return project ? hydrateIndexedDbProject(project, value.media) : null;
+  } catch {
+    return null;
+  } finally {
+    database?.close();
+  }
+}
+
+export async function clearActiveDirectorProjectFromIndexedDb() {
+  let database: IDBDatabase | null = null;
+  try {
+    database = await openDirectorDatabase();
+    if (!database) return;
+    const transaction = database.transaction(ACTIVE_PROJECT_STORE, 'readwrite');
+    transaction.objectStore(ACTIVE_PROJECT_STORE).delete(ACTIVE_PROJECT_RECORD_KEY);
+    await transactionDone(transaction);
+  } catch {
+    // Restricted or unavailable IndexedDB must not block a fresh project.
+  } finally {
+    database?.close();
+  }
+}
+
 function comparableProject(project: PersistedProjectData) {
   const { updatedAt: _updatedAt, ...rest } = project;
   return JSON.stringify(rest);
@@ -353,7 +516,7 @@ function comparableProject(project: PersistedProjectData) {
 export function archiveDirectorProject(project: DirectorPersistedProject) {
   const local = storage();
   if (!local || (project.objects.length === 0 && project.messages.length <= 1)) return listDirectorHistory();
-  const parsed = PersistedProjectSchema.safeParse(project);
+  const parsed = DirectorProjectFileSchema.safeParse(project);
   if (!parsed.success) return listDirectorHistory();
   const safeProject = parsed.data;
   const current = readHistory();
@@ -384,7 +547,7 @@ export function listDirectorHistory() {
 
 export function loadDirectorHistoryProject(id: string) {
   const entry = readHistory().find((item) => item.id === id);
-  return entry?.project as DirectorPersistedProject | undefined;
+  return entry ? withoutUnavailableMedia(entry.project as DirectorPersistedProject) : undefined;
 }
 
 export function deleteDirectorHistoryProject(id: string) {
