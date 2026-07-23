@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DirectorReelAction } from '../../../shared/directorSchemas';
+import { createTextLayer } from '../../../shared/textLayers';
 import type { CanvasObject } from '../types';
 import { EMPTY_SUMMARY } from '../types';
 import type { ReelClip, ReelProject } from './types';
@@ -33,7 +34,9 @@ const createId = (prefix: string) => `${prefix}-${++index}`;
 function action(type: DirectorReelAction['type'], values: Partial<DirectorReelAction> = {}): DirectorReelAction {
   return {
     type, objectIds: [], clipIds: [], aspectRatio: null, fps: null, quality: null,
-    effect: null, visualEffect: null, transition: null, motion: null, duration: null, intensity: null, caption: null,
+    effect: null, visualEffect: null, transition: null, motion: null, duration: null, intensity: null,
+    layerId: null, content: null, textX: null, textY: null, fontId: null, sizePreset: null,
+    textColor: null, align: null, inSec: null, outSec: null,
     ...values,
   };
 }
@@ -164,7 +167,7 @@ describe('Director reel project tools', () => {
         motion: 'pan-left',
         duration: 4.5,
         intensity: 44,
-        caption: 'Bounded caption',
+        textLayers: [createTextLayer('text-1', { content: 'Bounded caption', clipDuration: 4.5 })],
       }],
       audio: {
         name: privateAudio.name,
@@ -176,7 +179,7 @@ describe('Director reel project tools', () => {
     const context = toReelProjectContext(localProject, true);
     expect(context?.clips[0]).toMatchObject({
       title: 'Local image 1', effect: 'warm', motion: 'pan-left', duration: 4.5,
-      intensity: 44, caption: 'Bounded caption',
+      intensity: 44, textLayers: [{ content: 'Bounded caption' }],
     });
     expect(context?.clips[0]).not.toHaveProperty('imageUrl');
     expect(context?.clips[0]).not.toHaveProperty('sourceFile');
@@ -294,7 +297,7 @@ describe('Director reel project tools', () => {
     const rendered = apply(initial, [action('request_render', { effect: 'warm', fps: 24 })]);
     expect(rendered.appliedActions[0]).toEqual(action('request_render'));
 
-    const configured = apply(initial, [action('set_project', { quality: 'high', motion: 'pan-left', caption: 'Not applied' })]);
+    const configured = apply(initial, [action('set_project', { quality: 'high', motion: 'pan-left' })]);
     expect(configured.appliedActions[0]).toEqual(action('set_project', { quality: 'high' }));
   });
 
@@ -430,7 +433,7 @@ describe('Director reel project tools', () => {
     const base: ReelClip = {
       id: 'a', objectId: 'a', title: 'A', imageUrl: '/a.jpg', duration: 10,
       effect: 'clean', transition: 'crossfade', transitionDuration: 2,
-      motion: 'still', intensity: 50, caption: '',
+      motion: 'still', intensity: 50, textLayers: [],
     };
     const project = timelineProject([
       base,
@@ -451,5 +454,46 @@ describe('Director reel project tools', () => {
     expect(timeline.totalDuration).toBe(30);
     expect(reelDuration(project)).toBe(timeline.totalDuration);
     expect(compileReelTimeline(timelineProject([]))).toEqual({ clips: [], totalDuration: 0 });
+  });
+
+  it('applies the four text-layer actions to a clip through the human-gated boundary', () => {
+    index = 0;
+    const base = createReelProject(objects, ['upload-a'], createId);
+    const clipId = base.clips[0].id;
+
+    // add_text_layer
+    const added = apply(base, [action('add_text_layer', {
+      clipIds: [clipId], content: 'HELLO', textX: 0.5, textY: 0.2, sizePreset: 'L', textColor: '#ffcc00', align: 'center',
+    })]);
+    const withLayer = added.project!;
+    expect(withLayer.clips[0].textLayers).toHaveLength(1);
+    const layer = withLayer.clips[0].textLayers[0];
+    expect(layer).toMatchObject({ content: 'HELLO', x: 0.5, y: 0.2, style: { sizePreset: 'L', color: '#ffcc00', align: 'center' } });
+    expect(added.appliedActions.at(-1)).toMatchObject({ type: 'add_text_layer', clipIds: [clipId], layerId: layer.id });
+
+    // update_text_layer
+    const updated = apply(withLayer, [action('update_text_layer', { clipIds: [clipId], layerId: layer.id, content: 'BYE', inSec: 1, outSec: 2 })]);
+    expect(updated.project!.clips[0].textLayers[0]).toMatchObject({ content: 'BYE', timing: { inSec: 1, outSec: 2 } });
+
+    // move_text_layer
+    const moved = apply(updated.project, [action('move_text_layer', { clipIds: [clipId], layerId: layer.id, textX: 0.1, textY: 0.9 })]);
+    expect(moved.project!.clips[0].textLayers[0]).toMatchObject({ x: 0.1, y: 0.9, content: 'BYE' });
+
+    // remove_text_layer
+    const removed = apply(moved.project, [action('remove_text_layer', { clipIds: [clipId], layerId: layer.id })]);
+    expect(removed.project!.clips[0].textLayers).toHaveLength(0);
+  });
+
+  it('caps text layers per clip and rejects a no-op update', () => {
+    index = 0;
+    let project = createReelProject(objects, ['upload-a'], createId);
+    const clipId = project.clips[0].id;
+    for (let i = 0; i < 10; i += 1) {
+      project = apply(project, [action('add_text_layer', { clipIds: [clipId], content: `L${i}` })]).project!;
+    }
+    expect(project.clips[0].textLayers.length).toBe(8);
+
+    const noop = apply(project, [action('update_text_layer', { clipIds: [clipId], layerId: 'missing-layer' })]);
+    expect(noop.appliedActions.filter((entry) => entry.type === 'update_text_layer')).toHaveLength(0);
   });
 });

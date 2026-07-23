@@ -146,3 +146,47 @@
   .reel-render-bar { flex-wrap: wrap; align-content: center; padding: 8px 14px; }
   .render-status { order: 4; width: 100%; margin-left: 0; }
 }
+
+/* --- Text layer inspector --- */
+.text-inspector { display: grid; gap: 12px; }
+.text-layer-list { display: grid; gap: 6px; }
+.text-empty { margin: 0; color: var(--director-text-4); font-size: 11px; line-height: 1.45; }
+.text-layer-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 6px; }
+.text-layer-pick { min-width: 0; min-height: 30px; padding: 0 9px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--director-border); border-radius: 8px; background: var(--director-surface); color: var(--director-text-2); cursor: pointer; }
+.text-layer-row.selected .text-layer-pick { border-color: rgba(142,171,200,.6); background: rgba(142,171,200,.1); color: var(--director-blue-bright); }
+.text-layer-pick span { min-width: 0; overflow: hidden; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.text-layer-row-actions { display: flex; gap: 2px; }
+.text-layer-row-actions button { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--director-border); border-radius: 6px; background: transparent; color: var(--director-text-3); cursor: pointer; }
+.text-layer-row-actions button:hover:not(:disabled) { border-color: rgba(142,171,200,.4); color: var(--director-text); }
+.text-layer-row-actions button:disabled { opacity: .3; cursor: not-allowed; }
+.text-add-button { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px dashed rgba(142,171,200,.4); border-radius: 8px; background: rgba(142,171,200,.06); color: var(--director-blue-bright); font-size: 12px; cursor: pointer; }
+.text-add-button:disabled { opacity: .4; cursor: not-allowed; }
+.text-editor { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--director-hairline); }
+.text-editor textarea { width: 100%; min-height: 48px; padding: 8px 10px; resize: vertical; border: 1px solid var(--director-border); border-radius: 7px; outline: 0; background: var(--director-surface); color: var(--director-text-2); font-size: 13px; line-height: 1.4; }
+.text-editor textarea:focus { border-color: rgba(142,171,200,.5); }
+.text-field-label { color: var(--director-text-3); font: 11px/1 "SFMono-Regular", monospace; text-transform: uppercase; letter-spacing: .06em; }
+.text-font-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.text-font-grid button { min-height: 34px; padding: 0 8px; overflow: hidden; border: 1px solid var(--director-border); border-radius: 8px; background: var(--director-surface); color: var(--director-text-2); font-size: 14px; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.text-font-grid button.selected { border-color: rgba(142,171,200,.6); background: rgba(142,171,200,.1); color: var(--director-blue-bright); }
+.text-chip-row, .text-toggle-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.text-chip-row button, .text-toggle-row button { min-width: 34px; min-height: 30px; padding: 0 9px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--director-border); border-radius: 7px; background: var(--director-surface); color: var(--director-text-2); font-size: 12px; cursor: pointer; }
+.text-chip-row button.selected, .text-toggle-row button.selected { border-color: rgba(142,171,200,.6); background: rgba(142,171,200,.12); color: var(--director-blue-bright); }
+.text-preset-button { border-color: rgba(143,162,154,.4) !important; color: var(--director-sage-light) !important; }
+.text-chip-row input[type="number"] { width: 66px; height: 30px; padding: 0 8px; border: 1px solid var(--director-border); border-radius: 7px; outline: 0; background: var(--director-surface); color: var(--director-text-2); font-size: 12px; }
+.text-color-row { display: flex; align-items: center; gap: 8px; }
+.text-color-row input[type="color"] { width: 34px; height: 30px; padding: 0; border: 1px solid var(--director-border); border-radius: 7px; background: transparent; cursor: pointer; }
+.text-color-row input[type="text"] { width: 96px; height: 30px; padding: 0 8px; border: 1px solid var(--director-border); border-radius: 7px; outline: 0; background: var(--director-surface); color: var(--director-text-2); font: 12px/1 "SFMono-Regular", monospace; }
+.text-timing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.text-timing-warning { grid-column: 1/-1; margin: 0; color: var(--director-warn); font-size: 11px; line-height: 1.4; }
+
+/* --- Direct-manipulation overlay --- */
+.text-overlay { position: absolute; inset: 0; z-index: 4; }
+.text-safe-frame { position: absolute; inset: 5%; border: 1px dashed rgba(255,255,255,.14); border-radius: 4px; pointer-events: none; }
+.text-snap-guide { position: absolute; background: rgba(142,171,200,.8); box-shadow: 0 0 6px rgba(142,171,200,.6); pointer-events: none; }
+.text-snap-guide.vertical { top: 0; bottom: 0; width: 1px; }
+.text-snap-guide.horizontal { left: 0; right: 0; height: 1px; }
+.text-handle { position: absolute; transform: translate(-50%, -50%); }
+.text-handle-hit { width: 26px; height: 26px; display: grid; place-items: center; border: 1.5px solid rgba(196,219,241,.9); border-radius: 50%; background: rgba(13,13,18,.5); cursor: move; }
+.text-handle-hit::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--director-blue-bright); }
+.text-handle.selected .text-handle-hit { width: 34px; height: 34px; border-color: var(--director-blue-bright); box-shadow: 0 0 0 2px rgba(142,171,200,.35), 0 4px 16px rgba(0,0,0,.5); }
+.text-inline-editor { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 220px; min-height: 44px; padding: 7px 9px; border: 1px solid var(--director-blue-bright); border-radius: 8px; background: rgba(9,9,13,.96); color: var(--director-text); font-size: 13px; line-height: 1.35; outline: 0; resize: none; box-shadow: 0 12px 32px rgba(0,0,0,.6); }

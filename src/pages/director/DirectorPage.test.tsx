@@ -146,7 +146,7 @@ describe('DirectorPage canvas-aware chat', () => {
     const jsonBlob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
     expect(jsonBlob.type).toBe('application/json');
     const contents = await readBlob(jsonBlob);
-    expect(contents).toContain('"version": 1');
+    expect(contents).toContain('"version": 2');
     expect(contents).not.toContain('browser-test-key');
     expect(contents).not.toContain('blob:');
     const anchor = click.mock.instances[0] as HTMLAnchorElement;
@@ -262,7 +262,16 @@ describe('DirectorPage canvas-aware chat', () => {
         motion: null,
         duration: null,
         intensity: null,
-        caption: null,
+        layerId: null,
+        content: null,
+        textX: null,
+        textY: null,
+        fontId: null,
+        sizePreset: null,
+        textColor: null,
+        align: null,
+        inSec: null,
+        outSec: null,
       }]);
     });
     fireEvent.click(screen.getByText('Make reel request'));

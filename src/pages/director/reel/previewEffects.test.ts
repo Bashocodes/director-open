@@ -60,7 +60,7 @@ const clip: ReelClip = {
   transitionDuration: 0,
   motion: 'still',
   intensity: 62,
-  caption: '',
+  textLayers: [],
 };
 
 function fakeContext(width = 540, height = 960) {

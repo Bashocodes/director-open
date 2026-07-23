@@ -13,7 +13,8 @@ Director Open is a browser-based visual direction and reel editor. Bring your ow
 - **Canvas-aware, human-gated edits:** chat receives a compact text serialization of the current project and proposes Zod-validated director actions. Nothing is applied until a person chooses **Apply**.
 - **Headless MCP editing:** the stdio-only `director-mcp` package lets Claude Code, Codex CLI, and other MCP clients inspect project JSON, validate and apply the same typed actions transactionally, compile timelines, and inspect render plans without starting the browser.
 - **Typed plugin API:** effects, transitions, and motion presets declare stable IDs, Zod parameter schemas, UI hints, preview hooks, and export hooks. Plugin controls and catalogs come from the registry.
-- **Browser-local reel engine:** FFmpeg.wasm compiles the timeline, grades, effects, motion, transitions, captions, and optional audio into an H.264 MP4.
+- **Professional text layers:** each clip carries multiple positioned, styled, timed text layers (bundled local fonts, scrim/outline/shadow, fades) with WYSIWYG preview↔export parity and direct on-canvas manipulation.
+- **Browser-local reel engine:** FFmpeg.wasm compiles the timeline, grades, effects, motion, transitions, text, and optional audio into an H.264 MP4.
 - **Built-in export verification:** a bounded TypeScript ISO-BMFF parser inspects the resulting bytes for duration, tracks, codecs, dimensions, frames, audio, and container integrity. Warnings never block the download.
 - **No required backend:** the Cloudflare Worker serves the compiled SPA and security headers only. It has no media, AI, analytics, account, or persistence API.
 
@@ -67,6 +68,26 @@ Director Open has no media server, upload endpoint, analytics SDK, advertising t
 The optional AI feature sends text-only conversation and a bounded text summary of project state directly to the chosen provider. It does not send media bytes, local filenames, `File` objects, object URLs, frames, or exports. Provider data-use terms still apply when AI is enabled.
 
 See [PRIVACY.md](./PRIVACY.md) for the complete boundary.
+
+## Text
+
+Each reel clip supports an array of text layers instead of a single caption.
+A layer has multi-line content, a normalized 0–1 position (so every resolution
+renders identically), anchor, wrap width, rotation, a full style (font, size,
+weight, italic, color, letter-spacing, line-height, alignment, upper-case, scrim
+pill, outline, shadow), and timing (in/out plus fades).
+
+Text is authored two ways: directly on the preview (click to select, drag with
+centre/thirds/title-safe snap guides, arrow-key nudge, double-click to edit inline)
+and through the right-panel **Text** inspector. A single pure module,
+`src/lib/text/renderTextLayer.ts`, draws every layer for both the live preview and
+the FFmpeg export, so the preview is what the MP4 contains.
+
+Five open-licensed fonts (Inter, Space Grotesk, Playfair Display, Bebas Neue,
+JetBrains Mono) are bundled as local Latin-subset `.woff2` assets and loaded via
+`@font-face` from the same origin — never a CDN — preserving the local-first
+guarantee. See [docs/DECISIONS.md](./docs/DECISIONS.md) for the parity mechanism and
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for the font licenses.
 
 ## Plugin authoring
 

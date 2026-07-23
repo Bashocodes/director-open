@@ -5,9 +5,12 @@ import {
   resolvedPluginParams,
 } from '../../../plugins/registry';
 import type { PlayerFit } from '../workspaceLayout';
+import type { TextLayer } from '../../../shared/directorSchemas';
 import { clampPlayhead, keyToPlayerAction } from './playerControls';
 import { useFullscreen } from './useFullscreen';
-import { drawReelCaption } from './caption';
+import { TextLayerOverlay } from './TextLayerOverlay';
+import { renderTextLayer, resolveTextLayerAlpha } from '../../../lib/text/renderTextLayer';
+import { ensureTextFontsReady } from '../../../lib/text/loadFonts';
 import { compileReelTimeline, reelDuration } from './project';
 import { reelGradeStack, reelVisualEffectStack, type ReelClip, type ReelProject } from './types';
 import {
@@ -97,9 +100,25 @@ type ReelPreviewProps = {
   project: ReelProject;
   fit?: PlayerFit;
   onFitChange?: (fit: PlayerFit) => void;
+  editClipId?: string | null;
+  editLayers?: TextLayer[];
+  selectedLayerId?: string | null;
+  onSelectLayer?: (id: string | null) => void;
+  onChangeLayer?: (layer: TextLayer) => void;
+  onDeleteLayer?: (id: string) => void;
 };
 
-export function ReelPreview({ project, fit = 'fit', onFitChange }: ReelPreviewProps) {
+export function ReelPreview({
+  project,
+  fit = 'fit',
+  onFitChange,
+  editClipId = null,
+  editLayers,
+  selectedLayerId = null,
+  onSelectLayer,
+  onChangeLayer,
+  onDeleteLayer,
+}: ReelPreviewProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const clipCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -112,6 +131,7 @@ export function ReelPreview({ project, fit = 'fit', onFitChange }: ReelPreviewPr
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [images, setImages] = useState<Record<string, HTMLImageElement>>({});
+  const [fontsReady, setFontsReady] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggle: toggleFullscreen } = useFullscreen(shellRef);
   const [controlsVisible, setControlsVisible] = useState(true);
   const idleTimerRef = useRef<number | null>(null);
@@ -255,7 +275,11 @@ export function ReelPreview({ project, fit = 'fit', onFitChange }: ReelPreviewPr
         clipCanvas.width,
         clipCanvas.height,
       ));
-      drawReelCaption(clipContext, clip.caption, clipCanvas.width, clipCanvas.height);
+      clip.textLayers.forEach((layer) => {
+        const layerAlpha = resolveTextLayerAlpha(layer.timing, local);
+        if (layerAlpha <= 0) return;
+        renderTextLayer(clipContext, layer, { width: clipCanvas.width, height: clipCanvas.height, alpha: layerAlpha });
+      });
 
       if (structuralEffectMetrics) {
         canvas.dataset.pixelSortPreviewMs = structuralEffectMetrics.sortMs.toFixed(2);
@@ -274,7 +298,30 @@ export function ReelPreview({ project, fit = 'fit', onFitChange }: ReelPreviewPr
       context.restore();
     });
     context.restore();
-  }, [project, time, timeline, images]);
+  }, [project, time, timeline, images, fontsReady]);
+
+  useEffect(() => {
+    let active = true;
+    void ensureTextFontsReady().then(() => { if (active) setFontsReady(true); });
+    return () => { active = false; };
+  }, []);
+
+  // When a clip is selected for text editing, seek the preview to that clip so
+  // its handles overlay the frame they actually edit (not the playhead's clip).
+  useEffect(() => {
+    if (!editClipId || playing) return;
+    const index = project.clips.findIndex((clip) => clip.id === editClipId);
+    if (index < 0) return;
+    const start = timeline.clips[index]?.start ?? 0;
+    const end = start + project.clips[index].duration;
+    if (time < start || time >= end) {
+      const next = start + 0.01;
+      setTime(next);
+      if (audioRef.current) audioRef.current.currentTime = next;
+    }
+    // Intentionally keyed only on the selected clip, so scrubbing afterwards is free.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editClipId]);
 
   useEffect(() => {
     if (!playing) return;
@@ -362,6 +409,15 @@ export function ReelPreview({ project, fit = 'fit', onFitChange }: ReelPreviewPr
       >
         <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} aria-label="Local reel preview" />
         {!project.clips.length && <div className="reel-preview-empty">Add images to begin the edit.</div>}
+        {editLayers && editLayers.length > 0 && !playing && onSelectLayer && onChangeLayer && onDeleteLayer && (
+          <TextLayerOverlay
+            layers={editLayers}
+            selectedLayerId={selectedLayerId}
+            onSelect={onSelectLayer}
+            onChange={onChangeLayer}
+            onDelete={onDeleteLayer}
+          />
+        )}
       </div>
       {project.audio && <audio ref={audioRef} src={project.audio.url} loop preload="metadata" />}
       <div className="reel-playback">

@@ -14,7 +14,7 @@ describe('workspace layout reducer', () => {
     expect(state.chatCollapsed).toBe(false);
     expect(state.drawerOpen).toBe(false);
     expect(state.chatUnread).toBe(false);
-    expect(state.inspectorSections).toEqual({ output: true, look: true, motion: true, timing: true });
+    expect(state.inspectorSections).toEqual({ output: true, look: true, motion: true, text: true, timing: true });
     expect(state.playerFit).toBe('fit');
   });
 
@@ -72,12 +72,12 @@ describe('workspace layout persistence', () => {
       chatCollapsed: true,
       chatUnread: true,
       drawerOpen: true,
-      inspectorSections: { output: false, look: true, motion: false, timing: true },
+      inspectorSections: { output: false, look: true, motion: false, text: true, timing: true },
       playerFit: 'fill',
     };
     expect(persistableWorkspaceLayout(state)).toEqual({
       chatCollapsed: true,
-      inspectorSections: { output: false, look: true, motion: false, timing: true },
+      inspectorSections: { output: false, look: true, motion: false, text: true, timing: true },
       playerFit: 'fill',
     });
     expect(saveWorkspaceLayout(state)).toBe(true);
@@ -85,7 +85,7 @@ describe('workspace layout persistence', () => {
     const loaded = loadWorkspaceLayout();
     // Persisted fields restore…
     expect(loaded.chatCollapsed).toBe(true);
-    expect(loaded.inspectorSections).toEqual({ output: false, look: true, motion: false, timing: true });
+    expect(loaded.inspectorSections).toEqual({ output: false, look: true, motion: false, text: true, timing: true });
     expect(loaded.playerFit).toBe('fill');
     // …runtime-only fields always start fresh.
     expect(loaded.drawerOpen).toBe(false);
@@ -103,7 +103,7 @@ describe('workspace layout persistence', () => {
       JSON.stringify({ chatCollapsed: true, inspectorSections: { look: false }, playerFit: 'nonsense' }),
     );
     const loaded = loadWorkspaceLayout();
-    expect(loaded.inspectorSections).toEqual({ output: true, look: false, motion: true, timing: true });
+    expect(loaded.inspectorSections).toEqual({ output: true, look: false, motion: true, text: true, timing: true });
     expect(loaded.playerFit).toBe('fit');
   });
 });

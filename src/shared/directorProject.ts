@@ -5,14 +5,17 @@ import {
   DirectorModelSchema,
   DirectorResponseSchema,
   InheritanceChannelSchema,
+  MAX_TEXT_LAYERS_PER_CLIP,
   ReelAspectRatioSchema,
   ReelQualitySchema,
   StorySequenceSchema,
+  TextLayerSchema,
   VisualSummarySchema,
 } from './directorSchemas';
 import { resolveReelVisualEffect } from './reelVisualEffects';
+import { migrateCaptionToTextLayer } from './textLayers';
 
-export const DIRECTOR_PROJECT_FILE_VERSION = 1;
+export const DIRECTOR_PROJECT_FILE_VERSION = 2;
 export const MAX_DIRECTOR_PROJECT_JSON_BYTES = 5 * 1_048_576;
 export const MAX_DIRECTOR_PROJECT_MESSAGES = 120;
 export const LOCAL_MEDIA_REFERENCE_PREFIX = 'local-media:';
@@ -104,7 +107,7 @@ export const DirectorProjectReelClipSchema = z.object({
     z.string().min(1).max(160),
     z.record(z.string().min(1).max(80), z.unknown()),
   ).optional(),
-  caption: z.string().max(180),
+  textLayers: z.array(TextLayerSchema).max(MAX_TEXT_LAYERS_PER_CLIP).default([]),
 }).strict();
 
 export const DirectorProjectReelSchema = z.object({
@@ -220,8 +223,43 @@ function migratePersistedDirectorModel(value: unknown) {
   return model === project.model ? project : { ...project, model };
 }
 
+/**
+ * v1 → v2: convert each clip's legacy single `caption` string into one
+ * bottom-centered text layer and drop the field. Strictly version-gated so it
+ * never re-runs on an already-migrated (v2) project — re-running would mint
+ * duplicate layers on every load/save. Runs for the active file, history
+ * entries, and imported files (all flow through here).
+ */
+function migratePersistedTextLayers(value: unknown) {
+  const project = record(value);
+  if (!project || project.version !== 1) return value;
+  const reelProject = record(project.reelProject);
+  const clips = reelProject && Array.isArray(reelProject.clips) ? reelProject.clips : null;
+  const migratedClips = clips?.map((rawClip) => {
+    const clip = record(rawClip);
+    if (!clip) return rawClip;
+    const { caption, ...rest } = clip;
+    const existing = Array.isArray(clip.textLayers) ? clip.textLayers : [];
+    if (existing.length > 0 || typeof caption !== 'string' || !caption.trim()) {
+      return { ...rest, textLayers: existing };
+    }
+    const duration = typeof clip.duration === 'number' && Number.isFinite(clip.duration) ? clip.duration : 5;
+    const clipId = typeof clip.id === 'string' ? clip.id : 'clip';
+    return { ...rest, textLayers: [migrateCaptionToTextLayer(caption, clipId, duration)] };
+  });
+  return {
+    ...project,
+    version: 2,
+    ...(reelProject && migratedClips
+      ? { reelProject: { ...reelProject, clips: migratedClips } }
+      : {}),
+  };
+}
+
 export function migrateDirectorProjectValue(value: unknown) {
-  return migratePersistedDirectorModel(migratePersistedVisualEffects(value));
+  return migratePersistedTextLayers(
+    migratePersistedDirectorModel(migratePersistedVisualEffects(value)),
+  );
 }
 
 export function safeParseDirectorProjectFile(value: unknown) {

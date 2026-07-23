@@ -1,6 +1,7 @@
 import {
   buildFfmpegCommand,
   type FfmpegCommandPlan,
+  type TextLayerCommandInput,
 } from '../pages/director/reel/ffmpegRenderer';
 import { reelVisualEffectStack } from '../pages/director/reel/types';
 import { structuralEffectIds } from '../pages/director/reel/structuralEffects';
@@ -21,9 +22,10 @@ export type HeadlessRenderPlanInputs = {
     effects: string[];
     pattern: string;
   }>;
-  captions: Array<{
+  textLayers: Array<{
     inputIndex: number;
     clipId: string;
+    layerId: string;
     name: string;
   }>;
   audio: null;
@@ -88,17 +90,16 @@ export function buildHeadlessRenderPlan(
     });
   });
 
-  const captionInputIndexes: Array<number | null> = Array(reel.clips.length).fill(null);
-  const captions: HeadlessRenderPlanInputs['captions'] = [];
+  const textLayerInputs: TextLayerCommandInput[] = [];
+  const textLayers: HeadlessRenderPlanInputs['textLayers'] = [];
   reel.clips.forEach((clip, clipIndex) => {
-    if (!clip.caption.trim()) return;
-    const inputIndex = nextInputIndex;
-    nextInputIndex += 1;
-    captionInputIndexes[clipIndex] = inputIndex;
-    captions.push({
-      inputIndex,
-      clipId: clip.id,
-      name: `caption-${clipIndex}.png`,
+    clip.textLayers.forEach((layer, layerOrdinal) => {
+      if (!layer.content.trim()) return;
+      const inputIndex = nextInputIndex;
+      nextInputIndex += 1;
+      const name = `text-${clipIndex}-${layerOrdinal}.png`;
+      textLayerInputs.push({ clipIndex, inputIndex, name, layer });
+      textLayers.push({ inputIndex, clipId: clip.id, layerId: layer.id, name });
     });
   });
 
@@ -106,7 +107,7 @@ export function buildHeadlessRenderPlan(
     reel,
     images.map((input) => input.name),
     structuralEffectInputIndexes,
-    captionInputIndexes,
+    textLayerInputs,
     null,
   );
   return {
@@ -114,7 +115,7 @@ export function buildHeadlessRenderPlan(
     inputs: {
       images,
       structuralEffects,
-      captions,
+      textLayers,
       audio: null,
     },
   };

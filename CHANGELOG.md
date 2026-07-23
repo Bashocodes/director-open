@@ -5,6 +5,35 @@ use ISO 8601.
 
 ## [Unreleased]
 
+### Text / caption layer system
+
+Replaced the single plain caption string with a professional text-layer system.
+No render-pipeline architecture, MCP transport, or local-first boundary changed.
+
+- Each clip now carries an array of text layers: multi-line content, normalized
+  0..1 position, anchor, wrap width, rotation, rich style (bundled font, size
+  preset or custom px-at-1080, weight, italic, color, letter-spacing, line-height,
+  align, upper-case, scrim pill, outline, shadow), and timing (in/out + fades).
+- Project schema bumped v1 → v2 with a version-gated, idempotent migration that
+  converts the legacy caption into one bottom-centered text layer.
+- One pure render module (`src/lib/text/renderTextLayer.ts`) is the single source
+  of truth: the live preview overlay and the FFmpeg export path both draw through
+  it, so what the preview shows is what the MP4 contains. Export composites each
+  layer as a full-frame PNG with FFmpeg `overlay …:enable` windows and a matched
+  linear `fade=alpha` envelope.
+- Bundled five open-licensed (SIL OFL) fonts as local Latin-subset woff2 assets —
+  Inter, Space Grotesk, Playfair Display, Bebas Neue, JetBrains Mono — loaded via
+  @font-face, never a CDN, and preloaded before measurement/render.
+- Direct manipulation on the preview: click-select, drag with centre/thirds/
+  title-safe snap guides, arrow-key nudge, double-click inline edit, Delete (with
+  confirm), Escape to deselect; z-order via the inspector.
+- New "Text" inspector section (layers list, add, per-layer style/timing controls,
+  legibility-on-busy-footage preset) grouped with the D1 collapsible sections.
+- Extended the Director action schema with `add_text_layer`, `update_text_layer`,
+  `move_text_layer`, and `remove_text_layer` (same strict-flat convention and
+  human-Apply gate); the canvas-context serializer and MCP `describe_schema`
+  surface text layers.
+
 ### Workspace UX overhaul
 
 Layout, legibility, and interaction-quality pass over the editor shell. No render

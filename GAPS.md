@@ -154,9 +154,12 @@ boundary and cover media lifecycle, selection, and compound edits.
 
 ### The editor is still-image-and-music focused
 
-The current reel schema supports still clips and one optional audio track. It
-does not yet provide video clip trim/speed, waveform or beat analysis, audio
-volume/fades, multilayer composition, keyframes, masks, true HDR mastering, or
+The current reel schema supports still clips and one optional audio track. Each
+clip now carries a full text-layer system — multiple positioned, styled, timed
+layers with bundled fonts, scrim/outline/shadow, fades, and WYSIWYG preview↔export
+parity — so the earlier single-plain-caption limitation is closed. It still does
+not provide video clip trim/speed, waveform or beat analysis, audio volume/fades,
+non-text multilayer composition, keyframes, masks, true HDR mastering, or
 pixel-identical Canvas/FFmpeg transition preview. “HDR look” is deliberately an
 SDR grade.
 

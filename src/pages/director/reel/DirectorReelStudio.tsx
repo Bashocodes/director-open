@@ -53,6 +53,9 @@ import {
   type ReelRenderState,
 } from './types';
 import type { InspectorSectionId, PlayerFit } from '../workspaceLayout';
+import type { TextLayer } from '../../../shared/directorSchemas';
+import { createTextLayer, MAX_TEXT_LAYERS_PER_CLIP } from '../../../shared/textLayers';
+import { TextLayerInspector } from './TextLayerInspector';
 import './DirectorReelStudio.css';
 
 type Props = {
@@ -68,7 +71,7 @@ type Props = {
 };
 
 const DEFAULT_INSPECTOR_SECTIONS: Record<InspectorSectionId, boolean> = {
-  output: true, look: true, motion: true, timing: true,
+  output: true, look: true, motion: true, text: true, timing: true,
 };
 
 function InspectorSection({ id, title, meta, open, onToggle, children }: {
@@ -143,6 +146,7 @@ export function DirectorReelStudio({
   const [mediaNotice, setMediaNotice] = useState('');
   const [showQualityWarning, setShowQualityWarning] = useState(false);
   const [showRenderDetails, setShowRenderDetails] = useState(false);
+  const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
   const selectedClipIds = project.selectedClipIds.filter((id) => project.clips.some((clip) => clip.id === id));
   const selectedId = selectedClipIds[0];
   const selectedClip = project.clips.find((clip) => clip.id === selectedId) || null;
@@ -200,6 +204,12 @@ export function DirectorReelStudio({
     if (!heavyEffectsNeedQuality) setShowQualityWarning(false);
   }, [heavyEffectsNeedQuality]);
 
+  useEffect(() => {
+    if (selectedTextLayerId && !selectedClip?.textLayers.some((layer) => layer.id === selectedTextLayerId)) {
+      setSelectedTextLayerId(null);
+    }
+  }, [selectedClip, selectedTextLayerId]);
+
   function commitProject(next: ReelProject) {
     onChange(normalizeReelProject({ ...next, renderRequested: false }));
   }
@@ -242,6 +252,41 @@ export function DirectorReelStudio({
         };
       }),
     });
+  }
+
+  function commitClipTextLayers(clipId: string, layers: TextLayer[]) {
+    commitProject({
+      ...project,
+      clips: project.clips.map((clip) => (clip.id === clipId ? { ...clip, textLayers: layers } : clip)),
+    });
+  }
+
+  function addTextLayer() {
+    if (!selectedClip || selectedClip.textLayers.length >= MAX_TEXT_LAYERS_PER_CLIP) return;
+    const layer = createTextLayer(fileId('text'), { content: 'New text', clipDuration: selectedClip.duration });
+    commitClipTextLayers(selectedClip.id, [...selectedClip.textLayers, layer]);
+    setSelectedTextLayerId(layer.id);
+  }
+
+  function updateTextLayer(next: TextLayer) {
+    if (!selectedClip) return;
+    commitClipTextLayers(selectedClip.id, selectedClip.textLayers.map((layer) => (layer.id === next.id ? next : layer)));
+  }
+
+  function removeTextLayer(id: string) {
+    if (!selectedClip) return;
+    commitClipTextLayers(selectedClip.id, selectedClip.textLayers.filter((layer) => layer.id !== id));
+    setSelectedTextLayerId((current) => (current === id ? null : current));
+  }
+
+  function moveTextLayer(id: string, direction: -1 | 1) {
+    if (!selectedClip) return;
+    const layers = [...selectedClip.textLayers];
+    const index = layers.findIndex((layer) => layer.id === id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= layers.length) return;
+    [layers[index], layers[target]] = [layers[target], layers[index]];
+    commitClipTextLayers(selectedClip.id, layers);
   }
 
   function selectClip(id: string, additive = false) {
@@ -296,7 +341,7 @@ export function DirectorReelStudio({
       transitionDuration: project.clips.length + index === 0 ? 0 : 0.45,
       motion: index % 2 ? 'pull-out' : 'push-in',
       intensity: 62,
-      caption: '',
+      textLayers: [],
     }));
     setMediaNotice(rejected.slice(0, 2).join(' '));
     if (!additions.length) return;
@@ -456,7 +501,17 @@ export function DirectorReelStudio({
 
       <div className="reel-studio-body">
         <div className="reel-preview-column">
-          <ReelPreview project={project} fit={playerFit} onFitChange={onPlayerFitChange} />
+          <ReelPreview
+            project={project}
+            fit={playerFit}
+            onFitChange={onPlayerFitChange}
+            editClipId={selectedClip?.id ?? null}
+            editLayers={selectedClip?.textLayers}
+            selectedLayerId={selectedTextLayerId}
+            onSelectLayer={setSelectedTextLayerId}
+            onChangeLayer={updateTextLayer}
+            onDeleteLayer={removeTextLayer}
+          />
         </div>
 
         <aside className="reel-inspector">
@@ -574,9 +629,28 @@ export function DirectorReelStudio({
                 />
               </InspectorSection>
 
-              <InspectorSection id="timing" title="Timing & caption" open={inspectorSections.timing} onToggle={onToggleInspectorSection}>
+              <InspectorSection
+                id="text"
+                title="Text"
+                meta={selectedClip.textLayers.length ? `${selectedClip.textLayers.length}` : undefined}
+                open={inspectorSections.text}
+                onToggle={onToggleInspectorSection}
+              >
+                <TextLayerInspector
+                  layers={selectedClip.textLayers}
+                  selectedLayerId={selectedTextLayerId}
+                  clipDuration={selectedClip.duration}
+                  canAdd={selectedClip.textLayers.length < MAX_TEXT_LAYERS_PER_CLIP}
+                  onSelect={setSelectedTextLayerId}
+                  onAdd={addTextLayer}
+                  onChange={updateTextLayer}
+                  onRemove={removeTextLayer}
+                  onReorder={moveTextLayer}
+                />
+              </InspectorSection>
+
+              <InspectorSection id="timing" title="Timing" open={inspectorSections.timing} onToggle={onToggleInspectorSection}>
                 <label>Seconds<input type="number" min="1" max="12" step="0.1" value={selectedClip.duration} onChange={(event) => updateClip(selectedClip.id, { duration: Math.min(12, Math.max(1, Number(event.target.value))), durationWasUserSet: true })} /></label>
-                <label>Caption<input type="text" maxLength={180} value={selectedClip.caption} placeholder="Optional on-screen line" onChange={(event) => updateClip(selectedClip.id, { caption: event.target.value })} /></label>
               </InspectorSection>
             </div>
           ) : <div className="clip-inspector-empty">Select a clip in the timeline to edit its look, motion, and timing.</div>}

@@ -112,6 +112,92 @@ export const ReelMotionSchema = z.enum([
   'float',
 ]);
 
+/* --- Text layers ---------------------------------------------------------- */
+
+/** Bundled, open-licensed fonts. Loaded locally via @font-face — never a CDN. */
+export const TEXT_FONT_IDS = [
+  'inter',
+  'space-grotesk',
+  'playfair-display',
+  'bebas-neue',
+  'jetbrains-mono',
+] as const;
+export const TextFontIdSchema = z.enum(TEXT_FONT_IDS);
+export const TEXT_SIZE_PRESETS = ['S', 'M', 'L', 'XL', 'custom'] as const;
+export const TextSizePresetSchema = z.enum(TEXT_SIZE_PRESETS);
+export const TextAlignSchema = z.enum(['left', 'center', 'right']);
+export const TextCaseSchema = z.enum(['none', 'upper']);
+export const TextWeightSchema = z.enum(['regular', 'bold']);
+export const TextAnchorSchema = z.enum([
+  'top-left', 'top-center', 'top-right',
+  'center-left', 'center', 'center-right',
+  'bottom-left', 'bottom-center', 'bottom-right',
+]);
+
+/** #RGB, #RRGGBB, or #RRGGBBAA. */
+export const HexColorSchema = z.string().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/);
+
+export const MAX_TEXT_LAYER_CONTENT = 400;
+export const MAX_TEXT_LAYERS_PER_CLIP = 8;
+
+export const TextBackgroundSchema = z.object({
+  kind: z.enum(['none', 'scrim']),
+  color: HexColorSchema,
+  opacity: z.number().min(0).max(1),
+}).strict();
+
+export const TextOutlineSchema = z.object({
+  color: HexColorSchema,
+  /** Stroke width in px at the 1080-wide reference; 0 disables the outline. */
+  width: z.number().min(0).max(40),
+}).strict();
+
+export const TextShadowSchema = z.object({
+  color: HexColorSchema,
+  blur: z.number().min(0).max(80),
+  offsetX: z.number().min(-80).max(80),
+  offsetY: z.number().min(-80).max(80),
+}).strict();
+
+export const TextLayerStyleSchema = z.object({
+  fontId: TextFontIdSchema,
+  sizePreset: TextSizePresetSchema,
+  /** Effective glyph size in px at the 1080-wide reference — the single render input. */
+  sizePx: z.number().min(8).max(400),
+  weight: TextWeightSchema,
+  italic: z.boolean(),
+  color: HexColorSchema,
+  /** Tracking in px at the 1080-wide reference. */
+  letterSpacing: z.number().min(-20).max(60),
+  lineHeight: z.number().min(0.7).max(3),
+  align: TextAlignSchema,
+  case: TextCaseSchema,
+  background: TextBackgroundSchema,
+  outline: TextOutlineSchema,
+  shadow: TextShadowSchema,
+}).strict();
+
+export const TextTimingSchema = z.object({
+  inSec: z.number().min(0).max(120),
+  outSec: z.number().min(0).max(120),
+  fadeInSec: z.number().min(0).max(10),
+  fadeOutSec: z.number().min(0).max(10),
+}).strict();
+
+export const TextLayerSchema = z.object({
+  id: z.string().min(1).max(160),
+  content: z.string().max(MAX_TEXT_LAYER_CONTENT),
+  /** Normalized 0..1 canvas position so every resolution renders identically. */
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  anchor: TextAnchorSchema,
+  /** Wrapping width as a fraction of canvas width. */
+  widthFraction: z.number().min(0.05).max(1),
+  rotation: z.number().min(-180).max(180),
+  style: TextLayerStyleSchema,
+  timing: TextTimingSchema,
+}).strict();
+
 /**
  * A deliberately flat tool envelope. Provider schemas handle this shape more
  * reliably than a large discriminated union; unused fields must be null or [].
@@ -125,6 +211,10 @@ export const DirectorReelActionSchema = z.object({
     'style_clips',
     'set_project',
     'request_render',
+    'add_text_layer',
+    'update_text_layer',
+    'move_text_layer',
+    'remove_text_layer',
   ]),
   objectIds: z.array(z.string().max(160)).max(16),
   clipIds: z.array(z.string().max(160)).max(16),
@@ -137,7 +227,17 @@ export const DirectorReelActionSchema = z.object({
   motion: ReelMotionSchema.nullable(),
   duration: z.number().min(1).max(12).nullable(),
   intensity: z.number().min(0).max(100).nullable(),
-  caption: z.string().max(180).nullable(),
+  // Text-layer fields (flat subset; full styling lives in the inspector).
+  layerId: z.string().max(160).nullable(),
+  content: z.string().max(MAX_TEXT_LAYER_CONTENT).nullable(),
+  textX: z.number().min(0).max(1).nullable(),
+  textY: z.number().min(0).max(1).nullable(),
+  fontId: TextFontIdSchema.nullable(),
+  sizePreset: TextSizePresetSchema.nullable(),
+  textColor: HexColorSchema.nullable(),
+  align: TextAlignSchema.nullable(),
+  inSec: z.number().min(0).max(120).nullable(),
+  outSec: z.number().min(0).max(120).nullable(),
 }).strict();
 
 export const ReelProjectContextSchema = z.object({
@@ -156,7 +256,9 @@ export const ReelProjectContextSchema = z.object({
     transition: ReelTransitionSchema,
     motion: ReelMotionSchema,
     intensity: z.number().min(0).max(100),
-    caption: z.string().max(180),
+    textLayers: z.array(z.object({
+      content: z.string().max(120),
+    }).strict()).max(MAX_TEXT_LAYERS_PER_CLIP),
   }).strict()).max(16),
 }).strict();
 
@@ -212,6 +314,9 @@ export const DIRECTOR_ACTION_SCHEMA_DESCRIPTION = {
     visualEffects: [...DirectorVisualEffectVocabularySchema.options],
     transitions: [...ReelTransitionSchema.options],
     motions: [...ReelMotionSchema.options],
+    textFonts: [...TextFontIdSchema.options],
+    textSizePresets: [...TextSizePresetSchema.options],
+    textAligns: [...TextAlignSchema.options],
   },
   limits: {
     identifierCharacters: 160,
@@ -225,7 +330,8 @@ export const DIRECTOR_ACTION_SCHEMA_DESCRIPTION = {
     goalCharacters: 1_000,
     durationSeconds: [1, 12],
     intensity: [0, 100],
-    captionCharacters: 180,
+    textContentCharacters: MAX_TEXT_LAYER_CONTENT,
+    textLayersPerClip: MAX_TEXT_LAYERS_PER_CLIP,
   },
   unavailableActions: {
     search_and_add: 'Unavailable in the local-only project; upload media instead.',
@@ -253,6 +359,9 @@ export function describeDirectorActionSchema() {
       visualEffects: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.visualEffects],
       transitions: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.transitions],
       motions: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.motions],
+      textFonts: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.textFonts],
+      textSizePresets: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.textSizePresets],
+      textAligns: [...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.enums.textAligns],
     },
     limits: {
       ...DIRECTOR_ACTION_SCHEMA_DESCRIPTION.limits,
@@ -396,7 +505,11 @@ export const DIRECTOR_RESPONSE_JSON_SCHEMA: Record<string, unknown> = {
         properties: {
           type: {
             type: 'string',
-            enum: ['open_reel_studio', 'add_clips', 'remove_clips', 'reorder_clips', 'style_clips', 'set_project', 'request_render'],
+            enum: [
+              'open_reel_studio', 'add_clips', 'remove_clips', 'reorder_clips', 'style_clips',
+              'set_project', 'request_render',
+              'add_text_layer', 'update_text_layer', 'move_text_layer', 'remove_text_layer',
+            ],
           },
           objectIds: { type: 'array', items: { type: 'string' } },
           clipIds: { type: 'array', items: { type: 'string' } },
@@ -409,11 +522,21 @@ export const DIRECTOR_RESPONSE_JSON_SCHEMA: Record<string, unknown> = {
           motion: { anyOf: [{ type: 'string', enum: ReelMotionSchema.options }, { type: 'null' }] },
           duration: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           intensity: { anyOf: [{ type: 'number' }, { type: 'null' }] },
-          caption: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          layerId: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          content: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          textX: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+          textY: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+          fontId: { anyOf: [{ type: 'string', enum: TextFontIdSchema.options }, { type: 'null' }] },
+          sizePreset: { anyOf: [{ type: 'string', enum: TextSizePresetSchema.options }, { type: 'null' }] },
+          textColor: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          align: { anyOf: [{ type: 'string', enum: TextAlignSchema.options }, { type: 'null' }] },
+          inSec: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+          outSec: { anyOf: [{ type: 'number' }, { type: 'null' }] },
         },
         required: [
           'type', 'objectIds', 'clipIds', 'aspectRatio', 'fps', 'quality', 'effect', 'visualEffect',
-          'transition', 'motion', 'duration', 'intensity', 'caption',
+          'transition', 'motion', 'duration', 'intensity',
+          'layerId', 'content', 'textX', 'textY', 'fontId', 'sizePreset', 'textColor', 'align', 'inSec', 'outSec',
         ],
       },
     },
@@ -492,6 +615,13 @@ export type DirectorVisualEffectVocabulary = z.infer<typeof DirectorVisualEffect
 export type ReelTransition = z.infer<typeof ReelTransitionSchema>;
 export type ReelMotion = z.infer<typeof ReelMotionSchema>;
 export type DirectorReelAction = z.infer<typeof DirectorReelActionSchema>;
+export type TextLayer = z.infer<typeof TextLayerSchema>;
+export type TextLayerStyle = z.infer<typeof TextLayerStyleSchema>;
+export type TextTiming = z.infer<typeof TextTimingSchema>;
+export type TextFontId = z.infer<typeof TextFontIdSchema>;
+export type TextSizePreset = z.infer<typeof TextSizePresetSchema>;
+export type TextAlign = z.infer<typeof TextAlignSchema>;
+export type TextAnchor = z.infer<typeof TextAnchorSchema>;
 export type ReelProjectContext = z.infer<typeof ReelProjectContextSchema>;
 export type DirectorResponse = z.infer<typeof DirectorResponseSchema>;
 export type VisualSummary = z.infer<typeof VisualSummarySchema>;

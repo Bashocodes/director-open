@@ -45,7 +45,16 @@ const EMPTY_REEL_ACTION: Omit<DirectorReelAction, 'type'> = {
   motion: null,
   duration: null,
   intensity: null,
-  caption: null,
+  layerId: null,
+  content: null,
+  textX: null,
+  textY: null,
+  fontId: null,
+  sizePreset: null,
+  textColor: null,
+  align: null,
+  inSec: null,
+  outSec: null,
 };
 
 function reelAction(
@@ -57,7 +66,7 @@ function reelAction(
 
 function fixtureProject(): DirectorProjectFile {
   return {
-    version: 1,
+    version: 2,
     sessionId: 'test-session-0001',
     updatedAt: '2026-01-02T03:04:05.000Z',
     title: 'Fixture reel',
@@ -87,7 +96,7 @@ function fixtureProject(): DirectorProjectFile {
         transitionDuration: 0,
         motion: 'still',
         intensity: 50,
-        caption: '',
+        textLayers: [],
       }],
       selectedClipIds: ['clip-1'],
       audio: null,
@@ -186,6 +195,10 @@ describe('Director MCP protocol server', () => {
             'style_clips',
             'set_project',
             'request_render',
+            'add_text_layer',
+            'update_text_layer',
+            'move_text_layer',
+            'remove_text_layer',
           ],
         },
         fields: {
@@ -212,7 +225,16 @@ describe('Director MCP protocol server', () => {
             'motion',
             'duration',
             'intensity',
-            'caption',
+            'layerId',
+            'content',
+            'textX',
+            'textY',
+            'fontId',
+            'sizePreset',
+            'textColor',
+            'align',
+            'inSec',
+            'outSec',
           ],
         },
         enums: {
@@ -290,6 +312,9 @@ describe('Director MCP protocol server', () => {
             'arc-right',
             'float',
           ],
+          textFonts: ['inter', 'space-grotesk', 'playfair-display', 'bebas-neue', 'jetbrains-mono'],
+          textSizePresets: ['S', 'M', 'L', 'XL', 'custom'],
+          textAligns: ['left', 'center', 'right'],
         },
         limits: {
           identifierCharacters: 160,
@@ -303,7 +328,8 @@ describe('Director MCP protocol server', () => {
           goalCharacters: 1_000,
           durationSeconds: [1, 12],
           intensity: [0, 100],
-          captionCharacters: 180,
+          textContentCharacters: 400,
+          textLayersPerClip: 8,
         },
         unavailableActions: {
           search_and_add: 'Unavailable in the local-only project; upload media instead.',
@@ -420,6 +446,59 @@ describe('Director MCP protocol server', () => {
       receipts: [{ index: 0, status: 'rejected', code: 'stale_target' }],
     });
     expect(await readFile(projectPath, 'utf8')).toBe(beforeInvalid);
+    await client.close();
+  });
+
+  it('round-trips a text-layer action through validate and apply', async () => {
+    const { root, projectPath } = await makeFixtureRoot();
+    const { client } = await makeHarness(root);
+
+    const validated = await client.callTool({
+      name: 'validate_actions',
+      arguments: {
+        actions: [reelAction('add_text_layer', {
+          clipIds: ['clip-1'],
+          content: 'HELLO WORLD',
+          textX: 0.5,
+          textY: 0.2,
+          sizePreset: 'L',
+          textColor: '#ffcc00',
+        })],
+      },
+    });
+    expect(structured(validated)).toMatchObject({ ok: true, valid: true, results: [{ index: 0, valid: true }] });
+
+    const applied = await client.callTool({
+      name: 'apply_actions',
+      arguments: {
+        path: 'fixture.director.json',
+        actions: [reelAction('add_text_layer', {
+          clipIds: ['clip-1'],
+          content: 'HELLO WORLD',
+          textX: 0.5,
+          textY: 0.2,
+          sizePreset: 'L',
+          textColor: '#ffcc00',
+        })],
+      },
+    });
+    expect(structured(applied)).toMatchObject({
+      ok: true,
+      wroteFile: true,
+      appliedCount: 1,
+      rejectedCount: 0,
+      receipts: [{ index: 0, status: 'applied' }],
+    });
+
+    const saved = JSON.parse(await readFile(projectPath, 'utf8')) as {
+      reelProject: { clips: Array<{ textLayers: Array<{ content: string; style: { sizePreset: string; color: string } }> }> };
+    };
+    const layers = saved.reelProject.clips[0].textLayers;
+    expect(layers).toHaveLength(1);
+    expect(layers[0]).toMatchObject({
+      content: 'HELLO WORLD',
+      style: { sizePreset: 'L', color: '#ffcc00' },
+    });
     await client.close();
   });
 

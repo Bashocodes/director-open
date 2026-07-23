@@ -5,8 +5,10 @@ import {
   DirectorProjectFileSchema,
   isDirectorLocalMediaReference,
   MAX_DIRECTOR_PROJECT_JSON_BYTES,
+  migrateDirectorProjectValue,
   parseDirectorLocalMediaReference,
   parseDirectorProjectJson,
+  safeParseDirectorProjectFile,
   stringifyDirectorProjectFile,
   type DirectorProjectFile,
 } from './directorProject';
@@ -25,7 +27,7 @@ const emptySummary = {
 
 function fixtureProject(): DirectorProjectFile {
   return DirectorProjectFileSchema.parse({
-    version: 1,
+    version: 2,
     sessionId: 'fixture-session-1',
     updatedAt: '2026-01-02T03:04:05.000Z',
     title: 'Fixture project',
@@ -66,7 +68,7 @@ function fixtureProject(): DirectorProjectFile {
         transitionDuration: 0,
         motion: 'still',
         intensity: 60,
-        caption: '',
+        textLayers: [],
       }],
       selectedClipIds: ['clip-1'],
       audio: null,
@@ -79,6 +81,89 @@ function fixtureProject(): DirectorProjectFile {
     localMediaOmitted: 2,
   });
 }
+
+function legacyV1Project(caption: string): Record<string, unknown> {
+  return {
+    version: 1,
+    sessionId: 'legacy-session-1',
+    updatedAt: '2026-01-02T03:04:05.000Z',
+    title: 'Legacy caption reel',
+    objects: [],
+    selectedIds: [],
+    mode: 'animate',
+    goal: '',
+    exclusions: [],
+    contract: null,
+    sequence: null,
+    continuity: null,
+    reelProject: {
+      id: 'reel-legacy',
+      title: 'Legacy caption reel',
+      aspectRatio: '9:16',
+      fps: 30,
+      quality: 'balanced',
+      clips: [{
+        id: 'legacy-clip',
+        objectId: null,
+        title: 'Frame',
+        imageUrl: 'local-media:clip:legacy-clip',
+        duration: 4,
+        effect: 'clean',
+        visualEffect: 'none',
+        transition: 'cut',
+        transitionDuration: 0,
+        motion: 'still',
+        intensity: 50,
+        caption,
+      }],
+      selectedClipIds: ['legacy-clip'],
+      audio: null,
+      renderRequested: false,
+    },
+    reelOpen: true,
+    visibleSearch: null,
+    messages: [],
+    model: 'gpt-5.4',
+    localMediaOmitted: 1,
+  };
+}
+
+describe('Director project text-layer migration (v1 → v2)', () => {
+  it('converts a legacy caption into one bottom-centered text layer and bumps the version', () => {
+    const migrated = migrateDirectorProjectValue(legacyV1Project('Quiet Resolve')) as {
+      version: number;
+      reelProject: { clips: Array<Record<string, unknown> & { textLayers: Array<Record<string, unknown>> }> };
+    };
+    expect(migrated.version).toBe(2);
+    const clip = migrated.reelProject.clips[0];
+    expect(clip).not.toHaveProperty('caption');
+    expect(clip.textLayers).toHaveLength(1);
+    expect(clip.textLayers[0]).toMatchObject({
+      content: 'Quiet Resolve',
+      anchor: 'bottom-center',
+      timing: { inSec: 0, outSec: 4 },
+    });
+    // The migrated shape passes strict validation.
+    expect(safeParseDirectorProjectFile(legacyV1Project('Quiet Resolve')).success).toBe(true);
+  });
+
+  it('leaves an empty caption as an empty text-layer array', () => {
+    const migrated = migrateDirectorProjectValue(legacyV1Project('   ')) as {
+      reelProject: { clips: Array<{ textLayers: unknown[] }> };
+    };
+    expect(migrated.reelProject.clips[0].textLayers).toEqual([]);
+  });
+
+  it('is idempotent — never re-migrates an already-v2 project into duplicate layers', () => {
+    const once = migrateDirectorProjectValue(legacyV1Project('Once')) as { version: number };
+    const twice = migrateDirectorProjectValue(once) as {
+      version: number;
+      reelProject: { clips: Array<{ textLayers: unknown[] }> };
+    };
+    expect(twice.version).toBe(2);
+    expect(twice.reelProject.clips[0].textLayers).toHaveLength(1);
+  });
+});
 
 describe('Director project-file contract', () => {
   it('round-trips canonical JSON without dropping local-media placeholders', () => {

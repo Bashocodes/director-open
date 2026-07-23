@@ -53,6 +53,10 @@ describe('Director structured contracts', () => {
           'style_clips',
           'set_project',
           'request_render',
+          'add_text_layer',
+          'update_text_layer',
+          'move_text_layer',
+          'remove_text_layer',
         ],
       },
       fields: {
@@ -79,7 +83,16 @@ describe('Director structured contracts', () => {
           'motion',
           'duration',
           'intensity',
-          'caption',
+          'layerId',
+          'content',
+          'textX',
+          'textY',
+          'fontId',
+          'sizePreset',
+          'textColor',
+          'align',
+          'inSec',
+          'outSec',
         ],
       },
       enums: {
@@ -138,6 +151,9 @@ describe('Director structured contracts', () => {
           'arc-right',
           'float',
         ],
+        textFonts: ['inter', 'space-grotesk', 'playfair-display', 'bebas-neue', 'jetbrains-mono'],
+        textSizePresets: ['S', 'M', 'L', 'XL', 'custom'],
+        textAligns: ['left', 'center', 'right'],
       },
       limits: {
         identifierCharacters: 160,
@@ -151,7 +167,8 @@ describe('Director structured contracts', () => {
         goalCharacters: 1_000,
         durationSeconds: [1, 12],
         intensity: [0, 100],
-        captionCharacters: 180,
+        textContentCharacters: 400,
+        textLayersPerClip: 8,
       },
       unavailableActions: {
         search_and_add: 'Unavailable in the local-only project; upload media instead.',
@@ -265,7 +282,9 @@ describe('Director structured contracts', () => {
       reelActions: [{
         type: 'style_clips', objectIds: [], clipIds: ['clip-1'], aspectRatio: null,
         fps: null, quality: null, effect: 'clean', visualEffect: 'blur', transition: 'soft-dissolve',
-        motion: 'push-in', duration: 3.2, intensity: 35, caption: null,
+        motion: 'push-in', duration: 3.2, intensity: 35,
+        layerId: null, content: null, textX: null, textY: null, fontId: null,
+        sizePreset: null, textColor: null, align: null, inSec: null, outSec: null,
       }],
       suggestedActions: ['Render reel'],
     });
@@ -288,7 +307,7 @@ describe('Director structured contracts', () => {
       clips: [{
         id: 'clip-1', objectId: null, title: 'Legacy', duration: 3.2,
         effect: 'clean', visualEffect: 'rgb-split', transition: 'cut', motion: 'still',
-        intensity: 60, caption: '',
+        intensity: 60, textLayers: [],
       }],
     };
     expect(ReelProjectContextSchema.safeParse(project).success).toBe(false);
@@ -307,7 +326,9 @@ describe('Director structured contracts', () => {
     const baseAction = {
       type: 'set_project', objectIds: [], clipIds: [], aspectRatio: null,
       quality: null, effect: null, visualEffect: null, transition: null, motion: null,
-      duration: null, intensity: null, caption: null,
+      duration: null, intensity: null,
+      layerId: null, content: null, textX: null, textY: null, fontId: null,
+      sizePreset: null, textColor: null, align: null, inSec: null, outSec: null,
     } as const;
     const response = {
       message: 'Set the project frame rate.', mode: 'animate',

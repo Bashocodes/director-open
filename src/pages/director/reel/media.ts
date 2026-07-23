@@ -118,7 +118,7 @@ export function reelProjectFingerprint(project: ReelProject) {
       motion: clip.motion,
       intensity: clip.intensity,
       pluginParams: clip.pluginParams || {},
-      caption: clip.caption,
+      textLayers: clip.textLayers,
     })),
     audio: project.audio ? [
       project.audio.url,

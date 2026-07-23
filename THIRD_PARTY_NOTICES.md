@@ -3,6 +3,27 @@
 Director Open includes or depends on software written by other authors. The
 project's MIT license does not replace the licenses listed here.
 
+## Bundled fonts (SIL Open Font License 1.1)
+
+Director Open bundles the following fonts as Latin-subset `.woff2` files under
+`public/fonts/`, served from the same origin (never a CDN). Each font is licensed
+under the SIL Open Font License, Version 1.1; the full license text for each is
+committed under `public/fonts/licenses/`. The OFL requires that these fonts not be
+sold on their own and that the license and copyright notice be retained — both are
+satisfied by bundling the license files. Reserved Font Names must be respected by
+anyone who modifies the fonts.
+
+| Font | Copyright | License |
+| --- | --- | --- |
+| Inter | Copyright © The Inter Project Authors | SIL OFL 1.1 (`licenses/Inter-OFL.txt`) |
+| Space Grotesk | Copyright © The Space Grotesk Project Authors | SIL OFL 1.1 (`licenses/SpaceGrotesk-OFL.txt`) |
+| Playfair Display | Copyright © The Playfair Display Project Authors | SIL OFL 1.1 (`licenses/PlayfairDisplay-OFL.txt`) |
+| Bebas Neue | Copyright © 2019 The Bebas Neue Project Authors | SIL OFL 1.1 (`licenses/BebasNeue-OFL.txt`) |
+| JetBrains Mono | Copyright © 2020 The JetBrains Mono Project Authors | SIL OFL 1.1 (`licenses/JetBrainsMono-OFL.txt`) |
+
+The bundled files are subsets (Latin only) produced with `fonttools`/`pyftsubset`;
+subsetting does not change the applicable license.
+
 This inventory was regenerated on 2026-07-23 from `pnpm-lock.yaml`, the
 installed pnpm production dependency closure, package metadata, and the
 license files shipped in `node_modules`. It intentionally includes type-only
