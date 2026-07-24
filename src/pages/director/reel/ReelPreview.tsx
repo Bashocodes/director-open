@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pause, Play } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Maximize2, Minimize2, Pause, Play, Scan, Square } from 'lucide-react';
 import {
   pluginRegistry,
   resolvedPluginParams,
 } from '../../../plugins/registry';
+import type { PlayerFit } from '../workspaceLayout';
+import { clampPlayhead, keyToPlayerAction } from './playerControls';
+import { useFullscreen } from './useFullscreen';
 import { drawReelCaption } from './caption';
 import { compileReelTimeline, reelDuration } from './project';
 import { reelGradeStack, reelVisualEffectStack, type ReelClip, type ReelProject } from './types';
@@ -90,7 +93,14 @@ function formatTime(seconds: number) {
   return `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 }
 
-export function ReelPreview({ project }: { project: ReelProject }) {
+type ReelPreviewProps = {
+  project: ReelProject;
+  fit?: PlayerFit;
+  onFitChange?: (fit: PlayerFit) => void;
+};
+
+export function ReelPreview({ project, fit = 'fit', onFitChange }: ReelPreviewProps) {
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const clipCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const pixelCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -102,6 +112,10 @@ export function ReelPreview({ project }: { project: ReelProject }) {
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [images, setImages] = useState<Record<string, HTMLImageElement>>({});
+  const { supported: fullscreenSupported, isFullscreen, toggle: toggleFullscreen } = useFullscreen(shellRef);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const idleTimerRef = useRef<number | null>(null);
+  const activeRef = useRef(false);
   const dimensions = previewDimensions(project.aspectRatio);
   const duration = reelDuration(project);
   const timeline = useMemo(() => compileReelTimeline(project), [project]);
@@ -281,6 +295,42 @@ export function ReelPreview({ project }: { project: ReelProject }) {
     return () => { if (frameRef.current !== null) cancelAnimationFrame(frameRef.current); };
   }, [playing, duration]);
 
+  activeRef.current = playing || isFullscreen;
+
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    // Only auto-hide while the reel is playing or expanded to fullscreen.
+    idleTimerRef.current = window.setTimeout(() => {
+      if (activeRef.current) setControlsVisible(false);
+    }, 2000);
+  }, []);
+
+  useEffect(() => {
+    if (!playing && !isFullscreen) {
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+      setControlsVisible(true);
+    }
+  }, [playing, isFullscreen]);
+
+  useEffect(() => () => { if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current); }, []);
+
+  function scrubBy(delta: number) {
+    setTime((current) => {
+      const next = clampPlayhead(current + delta, duration);
+      if (audioRef.current) audioRef.current.currentTime = next;
+      return next;
+    });
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent) {
+    const action = keyToPlayerAction({ key: event.key, shiftKey: event.shiftKey }, { fps: project.fps });
+    if (!action) return;
+    event.preventDefault();
+    if (action.type === 'toggle-play') togglePlayback();
+    else scrubBy(action.delta);
+  }
+
   function togglePlayback() {
     if (!project.clips.length) return;
     if (playing) {
@@ -297,8 +347,19 @@ export function ReelPreview({ project }: { project: ReelProject }) {
   }
 
   return (
-    <div className="reel-preview-shell">
-      <div className={`reel-preview-frame aspect-${project.aspectRatio.replace(':', '-')}`}>
+    <div
+      ref={shellRef}
+      className={`reel-preview-shell ${isFullscreen ? 'fullscreen' : ''} ${controlsVisible ? '' : 'controls-hidden'}`}
+      tabIndex={0}
+      role="group"
+      aria-label="Reel preview player"
+      onKeyDown={handleKeyDown}
+      onPointerMove={revealControls}
+    >
+      <div
+        className={`reel-preview-frame aspect-${project.aspectRatio.replace(':', '-')} fit-${fit}`}
+        onDoubleClick={() => fullscreenSupported && toggleFullscreen()}
+      >
         <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} aria-label="Local reel preview" />
         {!project.clips.length && <div className="reel-preview-empty">Add images to begin the edit.</div>}
       </div>
@@ -322,6 +383,30 @@ export function ReelPreview({ project }: { project: ReelProject }) {
           }}
         />
         <span>{formatTime(duration)}</span>
+        {onFitChange && (
+          <button
+            type="button"
+            className="reel-player-tool"
+            aria-pressed={fit === 'fill'}
+            title={fit === 'fill' ? 'Fill frame — switch to fit' : 'Fit frame — switch to fill'}
+            aria-label={fit === 'fill' ? 'Switch preview to fit' : 'Switch preview to fill'}
+            onClick={() => onFitChange(fit === 'fill' ? 'fit' : 'fill')}
+          >
+            {fit === 'fill' ? <Scan size={14} /> : <Square size={14} />}
+          </button>
+        )}
+        {fullscreenSupported && (
+          <button
+            type="button"
+            className="reel-player-tool"
+            aria-pressed={isFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen preview'}
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            onClick={toggleFullscreen}
+          >
+            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -10,7 +10,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Focus, MousePointer2, ShieldCheck } from 'lucide-react';
+import { Focus, Images, MousePointer2, ShieldCheck } from 'lucide-react';
 import type {
   ContinuityReport,
   DirectionContract,
@@ -19,7 +19,6 @@ import type {
 } from '../../../shared/directorSchemas';
 import type { CanvasMode, CanvasObject } from '../types';
 import { DirectorDock } from './DirectorDock';
-import { DirectorLibrary } from './DirectorLibrary';
 import { DirectorNode, type DirectorFlowNode } from './DirectorNode';
 
 const nodeTypes: NodeTypes = { 'director-object': DirectorNode };
@@ -41,6 +40,7 @@ type Props = {
   onToggleChannel: (id: string, channel: InheritanceChannel) => void;
   onUploadFiles: (files: File[]) => void;
   onRemoveObject: (id: string) => void;
+  onOpenLibrary: () => void;
 };
 
 export function DirectorCanvas(props: Props) {
@@ -90,7 +90,7 @@ export function DirectorCanvas(props: Props) {
           animated: true,
           label: inherited.channels.join(' + '),
           style: { stroke: '#8eabc8', strokeWidth: 1.3 },
-          labelStyle: { fill: '#a9b8c7', fontSize: 10 },
+          labelStyle: { fill: '#a9b8c7', fontSize: 11 },
           labelBgStyle: { fill: '#0d0d12', fillOpacity: 0.92 },
           markerEnd: { type: MarkerType.ArrowClosed, color: '#8eabc8', width: 14, height: 14 },
         });
@@ -172,7 +172,14 @@ export function DirectorCanvas(props: Props) {
       data-director-canvas-version="center-v3"
       aria-label="Visual direction canvas"
     >
-      <DirectorLibrary onUpload={props.onUploadFiles} />
+      <button
+        type="button"
+        className="canvas-media-button"
+        onClick={props.onOpenLibrary}
+        title="Open the local media library"
+      >
+        <Images size={15} /> Media
+      </button>
       <div className="canvas-brief">
         <span>PROJECT NORTH STAR</span>
         <input value={props.goal} onChange={(event) => props.onGoalChange(event.target.value)} />
@@ -193,9 +200,10 @@ export function DirectorCanvas(props: Props) {
       </div>
       {props.objects.length === 0 && (
         <div className="canvas-empty-state">
-          <span>01</span>
+          <span>01 · DIRECTION</span>
           <h2>Build the visual language.</h2>
-          <p>Upload your own images from the local library, then choose what the direction inherits from each one.</p>
+          <p>Add your own images, then choose what the direction inherits from each.</p>
+          <button type="button" onClick={props.onOpenLibrary}><Images size={15} /> Open media library</button>
         </div>
       )}
       <ReactFlow

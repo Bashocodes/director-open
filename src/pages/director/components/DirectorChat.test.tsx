@@ -13,6 +13,9 @@ function directorChatProps(overrides: Partial<ComponentProps<typeof DirectorChat
   const aiSettings: AiSettings = structuredClone(DEFAULT_AI_SETTINGS);
   aiSettings.providers.openai.apiKey = 'test-key';
   return {
+    collapsed: false,
+    unread: false,
+    onToggleCollapse: vi.fn(),
     messages: [],
     busy: false,
     selectedCount: 0,

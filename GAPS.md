@@ -7,6 +7,15 @@ promise that every item will ship. A green `pnpm verify` is the merge gate, but
 it does not replace the browser, device, security, and release checks called
 out below.
 
+The workspace UX overhaul (see the "Unreleased" CHANGELOG entry) reworked the
+editor shell — collapsible chat, on-demand media drawer, fullscreen player,
+redesigned render bar, a design-token scale, and a legibility/contrast pass. It
+was a layout, legibility, and interaction-quality change only; it did not resolve
+any of the release-blocker, QA, or product gaps recorded below, so none have been
+removed. Notably, media already survived a page refresh via IndexedDB before this
+work (`directorPersistence.ts`); the overhaul added an explicit reload-survival
+test and honest drawer copy rather than a persistence fix.
+
 Difficulty estimates are intentionally coarse:
 
 - **Low:** a localized change and focused tests, usually less than one day.

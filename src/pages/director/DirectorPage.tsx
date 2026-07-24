@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   DEFAULT_DIRECTOR_MODEL,
   type ContinuityReport,
@@ -32,6 +32,14 @@ import {
 } from '../../lib/ai/vault';
 import { DirectorCanvas } from './components/DirectorCanvas';
 import { DirectorChat } from './components/DirectorChat';
+import { DirectorMediaDrawer } from './components/DirectorMediaDrawer';
+import { directorTokenStyle } from './designTokens';
+import { createLocalLibrarySource } from './librarySource';
+import {
+  loadWorkspaceLayout,
+  saveWorkspaceLayout,
+  workspaceLayoutReducer,
+} from './workspaceLayout';
 import {
   applyDirectorCanvasActions,
   type DirectorCanvasActionResult,
@@ -255,6 +263,8 @@ export function DirectorPage() {
   const [projectFileNotice, setProjectFileNotice] = useState('');
   const [persistenceStatus, setPersistenceStatus] = useState<DirectorPersistenceResult | 'saving'>('saving');
   const [persistenceReady, setPersistenceReady] = useState(false);
+  const [layout, dispatchLayout] = useReducer(workspaceLayoutReducer, undefined, loadWorkspaceLayout);
+  const lastAssistantSeenRef = useRef(welcome.id);
   const reelProjectRef = useRef<ReelProject | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
@@ -466,6 +476,60 @@ export function DirectorPage() {
     });
     setSelectedIds((current) => current.filter((id) => id !== objectId));
   }, []);
+
+  const removeReelAudio = useCallback(() => {
+    updateReelProject((current) => (current?.audio ? { ...current, audio: null } : current));
+  }, [updateReelProject]);
+
+  const librarySource = useMemo(
+    () => createLocalLibrarySource({
+      objects,
+      reelProject,
+      onAddFiles: addUploadFiles,
+      onRemoveObject: removeObject,
+      onRemoveAudio: removeReelAudio,
+    }),
+    [objects, reelProject, addUploadFiles, removeObject, removeReelAudio],
+  );
+
+  // Persist only the UI-chrome subset of workspace layout (never the project schema).
+  useEffect(() => { saveWorkspaceLayout(layout); }, [layout]);
+
+  // Global collapse shortcut: Cmd/Ctrl + \ .
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === '\\') {
+        event.preventDefault();
+        dispatchLayout({ type: 'toggle-chat' });
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // Light the unread dot when an assistant message appears while collapsed
+  // (covers notify()/proposal turns created directly in the collapsed state).
+  useEffect(() => {
+    const latest = messages.at(-1);
+    if (!latest || latest.role !== 'assistant' || latest.id === lastAssistantSeenRef.current) return;
+    lastAssistantSeenRef.current = latest.id;
+    if (latest.id !== welcome.id) dispatchLayout({ type: 'assistant-replied' });
+  }, [messages]);
+
+  // A streamed reply is created while expanded (the composer only exists then),
+  // so the id-based effect above can't catch a mid-stream collapse. Also fire
+  // when a request finishes (busy true→false); the reducer no-ops unless the
+  // chat is collapsed and not already unread.
+  const prevBusyRef = useRef(busy);
+  useEffect(() => {
+    const wasBusy = prevBusyRef.current;
+    prevBusyRef.current = busy;
+    if (!wasBusy || busy) return;
+    const latest = messages.at(-1);
+    if (latest?.role === 'assistant' && latest.id !== welcome.id) {
+      dispatchLayout({ type: 'assistant-replied' });
+    }
+  }, [busy, messages]);
 
   const applyResponse = useCallback((response: DirectorResponse, actionResults: DirectorCanvasActionResult[]) => {
     const live = liveProjectRef.current;
@@ -890,8 +954,8 @@ export function DirectorPage() {
   }
 
   return (
-    <div className="director-page" id="main-content">
-      <main className={`director-stage ${reelOpen ? 'reel-active' : ''}`}>
+    <div className="director-page" id="main-content" style={directorTokenStyle()}>
+      <main className={`director-stage ${reelOpen ? 'reel-active' : ''} ${layout.chatCollapsed ? 'chat-collapsed' : ''}`}>
         {reelOpen && reelProject ? (
           <DirectorReelStudio
             project={reelProject}
@@ -899,6 +963,10 @@ export function DirectorPage() {
             canvasSelectionCount={selectedIds.length || referenceCount}
             onUseCanvasSelection={useCanvasSelectionInReel}
             onClose={() => { setReelOpen(false); setMode('animate'); }}
+            playerFit={layout.playerFit}
+            onPlayerFitChange={(fit) => dispatchLayout({ type: 'set-player-fit', fit })}
+            inspectorSections={layout.inspectorSections}
+            onToggleInspectorSection={(id) => dispatchLayout({ type: 'toggle-inspector-section', id })}
           />
         ) : (
           <DirectorCanvas
@@ -918,9 +986,13 @@ export function DirectorPage() {
             onToggleChannel={toggleChannel}
             onUploadFiles={addUploadFiles}
             onRemoveObject={removeObject}
+            onOpenLibrary={() => dispatchLayout({ type: 'open-drawer' })}
           />
         )}
         <DirectorChat
+          collapsed={layout.chatCollapsed}
+          unread={layout.chatUnread}
+          onToggleCollapse={() => dispatchLayout({ type: 'toggle-chat' })}
           messages={messages}
           busy={busy}
           selectedCount={selectedCount}
@@ -948,6 +1020,12 @@ export function DirectorPage() {
           onDeleteHistory={deleteHistory}
         />
       </main>
+      <DirectorMediaDrawer
+        open={layout.drawerOpen}
+        source={librarySource}
+        persistenceStatus={persistenceStatus}
+        onClose={() => dispatchLayout({ type: 'close-drawer' })}
+      />
     </div>
   );
 }

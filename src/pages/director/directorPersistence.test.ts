@@ -281,6 +281,33 @@ describe('Director local project persistence', () => {
     expect(restored?.reelProject?.audio?.sourceFile.size).toBe(localAudio.size);
   });
 
+  it('media survives a simulated page reload (bytes, not just references)', async () => {
+    // Save the active project with its imported image bytes.
+    const input = projectInput();
+    const project = makePersistableDirectorProject(input);
+    if (!project) throw new Error('Expected a persistable project.');
+    saveActiveDirectorProject(project);
+    expect(await saveActiveDirectorProjectToIndexedDb(project, {
+      objects: input.objects,
+      reelProject: null,
+    })).toBe('saved');
+
+    // A page reload throws away every runtime blob: URL. The portable JSON keeps
+    // only a `local-media:` reference, so localStorage alone cannot recover media.
+    const localStorageOnly = loadActiveDirectorProject();
+    expect(localStorageOnly?.localMediaOmitted).toBeGreaterThan(0);
+    expect((localStorageOnly?.objects[0] as { imageUrl?: string }).imageUrl).toBeUndefined();
+
+    // IndexedDB rehydration reconstructs the File from stored bytes and mints a
+    // fresh object URL — the media genuinely persisted across the reload.
+    const reloaded = await loadActiveDirectorProjectFromIndexedDb();
+    expect(reloaded?.localMediaOmitted).toBe(0);
+    expect((reloaded?.objects[0] as { imageUrl?: string }).imageUrl).toMatch(/^blob:restored-/);
+    expect(reloaded?.objects[0].sourceFile).toBeInstanceOf(File);
+    expect(reloaded?.objects[0].sourceFile?.name).toBe('kinetic.png');
+    expect(reloaded?.objects[0].sourceFile?.size).toBe(localImage.size);
+  });
+
   it('creates bounded recovery snapshots that can be restored and deleted', () => {
     const project = makePersistableDirectorProject(projectInput());
     expect(project).not.toBeNull();
