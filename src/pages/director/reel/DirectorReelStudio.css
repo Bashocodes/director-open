@@ -190,3 +190,19 @@
 .text-handle-hit::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--director-blue-bright); }
 .text-handle.selected .text-handle-hit { width: 34px; height: 34px; border-color: var(--director-blue-bright); box-shadow: 0 0 0 2px rgba(142,171,200,.35), 0 4px 16px rgba(0,0,0,.5); }
 .text-inline-editor { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 220px; min-height: 44px; padding: 7px 9px; border: 1px solid var(--director-blue-bright); border-radius: 8px; background: rgba(9,9,13,.96); color: var(--director-text); font-size: 13px; line-height: 1.35; outline: 0; resize: none; box-shadow: 0 12px 32px rgba(0,0,0,.6); }
+
+/* --- Registry-driven plugin picker (transitions, camera moves, effects) --- */
+.plugin-picker { display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(142,171,200,.28); border-radius: 12px; background: rgba(14,15,20,.98); box-shadow: 0 18px 52px rgba(0,0,0,.64), inset 0 1px 0 rgba(255,255,255,.04); backdrop-filter: blur(22px) saturate(130%); }
+.plugin-picker-search { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-bottom: 1px solid var(--director-hairline); color: var(--director-text-4); }
+.plugin-picker-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--director-text); font-size: 13px; }
+.plugin-picker-list { min-height: 0; overflow-y: auto; padding: 6px; scrollbar-width: thin; scrollbar-color: rgba(142,171,200,.28) transparent; }
+.plugin-picker-empty { margin: 0; padding: 20px; color: var(--director-text-4); font-size: 12px; text-align: center; }
+.plugin-picker-group { position: sticky; top: 0; margin: 0; padding: 7px 6px 5px; background: rgba(14,15,20,.98); color: var(--director-blue); font: 11px/1 "SFMono-Regular", monospace; letter-spacing: .12em; text-transform: uppercase; }
+.plugin-picker-item { width: 100%; padding: 6px; display: grid; grid-template-columns: 46px minmax(0,1fr); align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--director-text-2); text-align: left; cursor: pointer; }
+.plugin-picker-item.active { background: rgba(255,255,255,.05); }
+.plugin-picker-item.selected { border-color: rgba(142,171,200,.5); background: rgba(142,171,200,.1); }
+.plugin-thumb { width: 46px; height: 62px; border-radius: 6px; background: #05050a; border: 1px solid rgba(255,255,255,.1); }
+.plugin-picker-meta { min-width: 0; display: grid; gap: 3px; }
+.plugin-picker-meta strong { overflow: hidden; color: var(--director-text); font: 500 13px/1.2 Inter, system-ui, sans-serif; white-space: nowrap; text-overflow: ellipsis; }
+.plugin-picker-meta small { overflow: hidden; color: var(--director-text-4); font: 11px/1.35 Inter, system-ui, sans-serif; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.reel-preview-note { position: absolute; z-index: 3; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 5px 10px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; background: rgba(9,9,13,.82); color: var(--director-text-3); font: 11px/1 "SFMono-Regular", monospace; white-space: nowrap; pointer-events: none; }

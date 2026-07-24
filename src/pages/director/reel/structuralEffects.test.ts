@@ -32,6 +32,9 @@ describe('structural effect registry', () => {
       'halftone-reveal',
       'ripple-drift',
       'threshold-melt',
+      'film-grain',
+      'halation-bloom',
+      'vignette-breathe',
     ]);
     expect(isStructuralEffect('pixel-sort')).toBe(true);
     expect(isStructuralEffect('glow')).toBe(false);

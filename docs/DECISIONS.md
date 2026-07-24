@@ -16,6 +16,58 @@ Preview remains interactive without loading FFmpeg. Final rendering begins only 
 
 Canvas metadata, conversation, creative artifacts, reel settings, and imported image/audio bytes for the active project are persisted locally in IndexedDB. Eight bounded history summaries remain schema-validated in local storage. Temporary blob URLs and rendered output are never persisted.
 
+## Transition engine
+
+Transitions come in two tiers, both registry plugins (no hardcoded switch):
+
+1. **Affine / xfade** (the original tier): `preview()` returns an opacity+transform
+   state composited on canvas; `ffmpegTransition()` returns an FFmpeg `xfade` name.
+   Preview and export are two approximations — acceptable for simple dissolves/slides.
+2. **Per-pixel** (the new tier): an optional pure `renderFrame(frameA, frameB,
+   progress, width, height, params) → RGBA` is the single source of truth. It is
+   the ONLY thing that draws the transition in both preview and export.
+
+**Parity mechanism for per-pixel transitions.** One shared pure function,
+`renderTransitionFrame` (src/plugins/transitions/transitionKit.ts), applies the
+eased progress and calls the plugin's `renderFrame`. Both call sites use it:
+
+- **Preview** (`ReelPreview`): when the playhead is inside a per-pixel transition
+  window, it composites the two clips' boundary frames (via the shared
+  `compositeClipBoundary`), calls `renderTransitionFrame`, and draws the result —
+  skipping the normal clip composite for that frame.
+- **Export** (`BrowserFfmpegRenderer`): it composites the same boundary frames at
+  full resolution with the SAME `compositeClipBoundary`, renders the overlap to a
+  PNG sequence with the SAME `renderTransitionFrame`, and splices it in as an
+  **opaque overlay over the untouched xfade base** — `[base][seq]overlay=0:0:enable='between(t,start,end)'`
+  with the sequence `setpts`-shifted to the window start. The covered xfade is
+  never seen; the timeline/duration math is unchanged (no concat surgery, so the
+  export duration check still holds).
+
+Because both paths call one imported `renderFrame` on boundary frames produced by
+one shared compositor, identical inputs give identical output. `renderFrame`
+returns exactly frameA at progress 0 and frameB at progress 1, so the overlay's
+first/last frames match the covered base seamlessly.
+
+**Honest scope.** Parity is claimed for the transition blend on identical boundary
+frames — proven by tests that feed synthetic RGBA straight into `renderFrame`
+(the boundary compositing is canvas-only and, like the D2 text goldens, is not
+runnable in jsdom, so the golden/parity tests operate on the pure blend, and the
+export filtergraph is guarded by a structural string assertion). Two residual,
+documented gaps: preview processes at display resolution (reduced-quality plugins
+declare `previewQuality: 'reduced'` and the player shows a "preview simplified —
+export is full quality" note), and the transition's JS-composited boundary grade
+differs slightly from FFmpeg's grade of the clip body (the pre-existing
+canvas-vs-ffmpeg grade gap). All spatial parameters are expressed as fractions of
+the frame so 540-wide preview and 1080-wide export are the same transition at
+different sampling densities. A real-browser render is the only thing that would
+confirm end-to-end visual parity, which is unverifiable under the no-dev-server
+constraint.
+
+Every algorithm (radial displacement, inline value/gradient noise, projected
+gradients, directional box-blur, seeded RGB-split glitch) is an original
+first-principles implementation of a textbook technique — no ported shader or
+noise-library code, so no attribution is required in THIRD_PARTY_NOTICES.md.
+
 ## Text layers and preview↔export parity
 
 On-screen text is modeled as an ordered array of text layers per clip (see

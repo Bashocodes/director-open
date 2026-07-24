@@ -10,6 +10,8 @@ import {
 import { reelDimensions } from './catalog';
 import { renderTextLayer } from '../../../lib/text/renderTextLayer';
 import { ensureTextFontsReady } from '../../../lib/text/loadFonts';
+import { renderTransitionFrame } from '../../../plugins/transitions/transitionKit';
+import { compositeClipBoundary } from './transitionBoundary';
 import type { TextLayer } from '../../../shared/directorSchemas';
 import {
   assertKnownMediaLimits,
@@ -59,6 +61,19 @@ export type TextLayerCommandInput = {
   inputIndex: number;
   name: string;
   layer: TextLayer;
+};
+
+/**
+ * One per-pixel transition PNG sequence, overlaid opaque over the (covered)
+ * xfade base at its absolute timeline window. `name` is an FFmpeg image2
+ * pattern (e.g. `transition-1-%04d.png`).
+ */
+export type TransitionCommandInput = {
+  pairIndex: number;
+  inputIndex: number;
+  name: string;
+  start: number;
+  duration: number;
 };
 
 function textLayerFadeWindow(clip: ReelClip, layer: TextLayer) {
@@ -191,6 +206,7 @@ export function buildFfmpegCommand(
   structuralEffectInputIndexes: StructuralEffectInputIndexes,
   textLayerInputs: TextLayerCommandInput[],
   audioInputIndex: number | null,
+  transitionInputs: TransitionCommandInput[] = [],
 ): FfmpegCommandPlan {
   const { width, height } = reelDimensions(project.aspectRatio, project.quality);
   const filterParts: string[] = [];
@@ -210,6 +226,11 @@ export function buildFfmpegCommand(
   // Text-layer PNGs, in ascending input-index order (must match the caller's numbering).
   [...textLayerInputs].sort((a, b) => a.inputIndex - b.inputIndex).forEach((input) => {
     args.push('-loop', '1', '-framerate', String(project.fps), '-t', String(project.clips[input.clipIndex].duration), '-i', input.name);
+  });
+  // Per-pixel transition PNG sequences (one opaque frame per output frame),
+  // numbered after text inputs and before audio.
+  [...transitionInputs].sort((a, b) => a.inputIndex - b.inputIndex).forEach((input) => {
+    args.push('-framerate', String(project.fps), '-start_number', '0', '-i', input.name);
   });
   if (audioInputIndex !== null) args.push('-stream_loop', '-1', '-i', 'music-input');
 
@@ -323,7 +344,27 @@ export function buildFfmpegCommand(
     }
     activeLabel = nextLabel;
   }
-  filterParts.push(`[${activeLabel}]format=yuv420p[video-out]`);
+
+  // Per-pixel transitions overlay their opaque PNG sequence over the (covered)
+  // xfade base at the absolute timeline window. The base's timeline/duration is
+  // untouched; the overlay simply hides the xfade during the window. setpts
+  // shifts each sequence so its frame 0 lands at the window start.
+  const orderedTransitions = [...transitionInputs].sort((a, b) => a.inputIndex - b.inputIndex);
+  if (orderedTransitions.length === 0) {
+    filterParts.push(`[${activeLabel}]format=yuv420p[video-out]`);
+  } else {
+    filterParts.push(`[${activeLabel}]format=yuv420p[trans-base-0]`);
+    orderedTransitions.forEach((transition, ordinal) => {
+      const end = transition.start + transition.duration;
+      filterParts.push(
+        `[${transition.inputIndex}:v]format=yuv420p,settb=AVTB,setpts=PTS+${fixed(transition.start)}/TB[trans-src-${ordinal}]`,
+      );
+      const nextLabel = ordinal === orderedTransitions.length - 1 ? 'video-out' : `trans-base-${ordinal + 1}`;
+      filterParts.push(
+        `[trans-base-${ordinal}][trans-src-${ordinal}]overlay=0:0:enable='between(t,${fixed(transition.start)},${fixed(end)})'[${nextLabel}]`,
+      );
+    });
+  }
 
   const outputName = 'director-open-reel.mp4';
   const crf = project.quality === 'maximum' ? '12' : project.quality === 'high' ? '16' : project.quality === 'balanced' ? '19' : '24';
@@ -369,6 +410,23 @@ async function readClipBytes(clip: ReelClip, signal: AbortSignal) {
   const extension = imageExtension(clip.sourceFile, clip.imageUrl);
   if (!extension) throw new Error(`“${clip.title}” must be a JPEG, PNG, or WebP still image.`);
   return { bytes, extension };
+}
+
+async function rgbaToPngBytes(rgba: Uint8ClampedArray, width: number, height: number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  const imageData = context.createImageData(width, height);
+  imageData.data.set(rgba);
+  context.putImageData(imageData, 0, 0);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+}
+
+async function decodeClipBitmap(bytes: Uint8Array) {
+  return createImageBitmap(new Blob([bytes.slice().buffer as ArrayBuffer]));
 }
 
 async function makeTextLayerOverlay(layer: TextLayer, width: number, height: number) {
@@ -648,6 +706,47 @@ export class BrowserFfmpegRenderer {
         }
       }
 
+      // Per-pixel transitions: render each overlap as a PNG sequence using the
+      // shared renderTransitionFrame + shared boundary compositor, then splice
+      // it in as an opaque overlay over the (covered) xfade base.
+      const transitionInputs: TransitionCommandInput[] = [];
+      const renderTimeline = compileReelTimeline(project);
+      for (let pairIndex = 1; pairIndex < project.clips.length; pairIndex += 1) {
+        const clip = project.clips[pairIndex];
+        const plugin = pluginRegistry.getTransition(clip.transition);
+        const overlap = renderTimeline.clips[pairIndex].incomingOverlap;
+        if (!plugin?.renderFrame || overlap <= 0) continue;
+        if (this.cancelled) throw new Error('Render cancelled.');
+        const previous = project.clips[pairIndex - 1];
+        const bitmapA = await decodeClipBitmap(clipInputs[pairIndex - 1].bytes);
+        const bitmapB = await decodeClipBitmap(clipInputs[pairIndex].bytes);
+        try {
+          const frameA = compositeClipBoundary(bitmapA, bitmapA.width, bitmapA.height, previous, width, height, 'out');
+          const frameB = compositeClipBoundary(bitmapB, bitmapB.width, bitmapB.height, clip, width, height, 'in');
+          const params = resolvedPluginParams(plugin, clip.pluginParams?.[clip.transition], { duration: overlap });
+          const frameCount = Math.max(1, Math.round(overlap * project.fps));
+          for (let frame = 0; frame < frameCount; frame += 1) {
+            if (this.cancelled) throw new Error('Render cancelled.');
+            const rawProgress = frameCount <= 1 ? 1 : frame / (frameCount - 1);
+            const rgba = renderTransitionFrame(plugin, { frameA, frameB, rawProgress, width, height, params });
+            const png = await rgbaToPngBytes(rgba, width, height);
+            if (!png) continue;
+            await writeInput(`transition-${pairIndex}-${String(frame).padStart(4, '0')}.png`, png, false);
+          }
+        } finally {
+          bitmapA.close?.();
+          bitmapB.close?.();
+        }
+        transitionInputs.push({
+          pairIndex,
+          inputIndex: nextInputIndex,
+          name: `transition-${pairIndex}-%04d.png`,
+          start: renderTimeline.clips[pairIndex].start,
+          duration: overlap,
+        });
+        nextInputIndex += 1;
+      }
+
       let audioInputIndex: number | null = null;
       if (project.audio) {
         await writeInput('music-input', new Uint8Array(await project.audio.sourceFile.arrayBuffer()));
@@ -660,6 +759,7 @@ export class BrowserFfmpegRenderer {
         structuralEffectInputIndexes,
         textLayerInputs,
         audioInputIndex,
+        transitionInputs,
       );
       progress = ({ progress: value }: { progress: number }) => callbacks.onProgress(Math.min(0.99, Math.max(0, value)));
       ffmpeg.on('progress', progress);

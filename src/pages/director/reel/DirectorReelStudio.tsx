@@ -25,9 +25,7 @@ import type { VerifyReport } from '../../../lib/verify';
 import {
   REEL_FORMATS,
   REEL_GRADES,
-  REEL_MOTIONS,
   REEL_QUALITIES,
-  REEL_TRANSITIONS,
   REEL_VISUAL_EFFECTS,
   reelDimensions,
 } from './catalog';
@@ -43,6 +41,7 @@ import { ExportVerifyPanel } from './ExportVerifyPanel';
 import { ReelPreview } from './ReelPreview';
 import { PluginParamFields } from './PluginParamFields';
 import { ReelSelect } from './ReelSelect';
+import { PluginPicker } from './PluginPicker';
 import { ReelStackControl } from './ReelStackControl';
 import {
   INITIAL_RENDER_STATE,
@@ -505,6 +504,7 @@ export function DirectorReelStudio({
             project={project}
             fit={playerFit}
             onFitChange={onPlayerFitChange}
+            simplifiedPreview={project.clips.some((clip) => pluginRegistry.getTransition(clip.transition)?.previewQuality === 'reduced')}
             editClipId={selectedClip?.id ?? null}
             editLayers={selectedClip?.textLayers}
             selectedLayerId={selectedTextLayerId}
@@ -586,7 +586,7 @@ export function DirectorReelStudio({
               </InspectorSection>
 
               <InspectorSection id="motion" title="Motion & transition" open={inspectorSections.motion} onToggle={onToggleInspectorSection}>
-                <ReelSelect label="Camera move" value={selectedClip.motion} options={REEL_MOTIONS} onChange={(motion) => updateClip(selectedClip.id, { motion })} />
+                <PluginPicker label="Camera move" kind="motion" value={selectedClip.motion} onChange={(motion) => updateClip(selectedClip.id, { motion })} />
                 <PluginParamFields
                   plugin={selectedMotionPlugin}
                   values={selectedClip.pluginParams?.[selectedClip.motion]}
@@ -597,7 +597,7 @@ export function DirectorReelStudio({
                     value,
                   )}
                 />
-                <ReelSelect label="Transition" value={transitionClip?.transition || 'cut'} options={REEL_TRANSITIONS} disabled={!hasEditableTransitionTarget} onChange={(nextTransition) => {
+                <PluginPicker label="Transition" kind="transition" value={transitionClip?.transition || 'cut'} disabled={!hasEditableTransitionTarget} onChange={(nextTransition) => {
                   const transition = nextTransition;
                   const plugin = pluginRegistry.getTransition(transition);
                   const defaults = plugin ? safePluginParams(plugin) : {};

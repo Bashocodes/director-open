@@ -1,0 +1,21 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`effect goldens > produces deterministic, stable fingerprints at 0.25/0.5/0.75 1`] = `
+{
+  "film-grain": [
+    "1c4f289c",
+    "b995d56e",
+    "e6e69d23",
+  ],
+  "halation-bloom": [
+    "ba40f686",
+    "ba40f686",
+    "ba40f686",
+  ],
+  "vignette-breathe": [
+    "8ef09962",
+    "4e860afa",
+    "8ef09962",
+  ],
+}
+`;

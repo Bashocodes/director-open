@@ -28,6 +28,9 @@ const GOLDEN_FINGERPRINTS: Record<string, string> = {
   'halftone-reveal': 'fnv1a=56b43b25;changed=12288',
   'ripple-drift': 'fnv1a=09657059;changed=9337',
   'threshold-melt': 'fnv1a=594e4409;changed=12288',
+  'film-grain': 'fnv1a=c88376a1;changed=12092',
+  'halation-bloom': 'fnv1a=99330647;changed=2753',
+  'vignette-breathe': 'fnv1a=cd7005b3;changed=4574',
 };
 
 function fixtureFrame() {
