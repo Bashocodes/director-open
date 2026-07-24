@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
   DIRECTOR_ACTIONS_MARKER,
+  DIRECTOR_SYSTEM_PROMPT,
   DirectorAiResponseError,
   parseDirectorAiResponse,
   splitDirectorActions,
 } from './directorResponse';
+
+describe('Director system prompt action surface', () => {
+  it('teaches the chat the text-layer verbs and no longer mentions caption', () => {
+    for (const verb of ['add_text_layer', 'update_text_layer', 'move_text_layer', 'remove_text_layer']) {
+      expect(DIRECTOR_SYSTEM_PROMPT).toContain(verb);
+    }
+    // The generated JSON schema is the model's only field list; caption is gone.
+    expect(DIRECTOR_SYSTEM_PROMPT).not.toContain('caption');
+    expect(DIRECTOR_SYSTEM_PROMPT).toContain('sizePreset');
+  });
+});
 
 const setGoal = {
   type: 'set_goal',
@@ -30,7 +42,16 @@ const styleClip = {
   motion: 'push-in',
   duration: 3,
   intensity: 60,
-  caption: null,
+  layerId: null,
+  content: null,
+  textX: null,
+  textY: null,
+  fontId: null,
+  sizePreset: null,
+  textColor: null,
+  align: null,
+  inSec: null,
+  outSec: null,
 };
 
 describe('Director action response parsing', () => {

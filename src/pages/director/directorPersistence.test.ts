@@ -85,7 +85,7 @@ describe('Director local project persistence', () => {
         id: 'legacy-clip', objectId: 'upload-1', title: 'Legacy portrait',
         imageUrl: 'data:image/png;base64,AA==', duration: 3.2, effect: 'clean',
         visualEffect: 'glitch-burst', visualEffectStack: ['glitch-burst'], transition: 'cut',
-        transitionDuration: 0, motion: 'still', intensity: 60, caption: '',
+        transitionDuration: 0, motion: 'still', intensity: 60, textLayers: [],
       }],
       selectedClipIds: ['legacy-clip'], audio: null, renderRequested: false,
     };
@@ -168,7 +168,7 @@ describe('Director local project persistence', () => {
           'halftone-reveal': { intensity: 73 },
           'push-in': {},
         },
-        caption: '',
+        textLayers: [],
       }],
       selectedClipIds: ['plugin-clip'],
       audio: null,
@@ -214,7 +214,7 @@ describe('Director local project persistence', () => {
       clips: [{
           id: 'clip-local', objectId: null, title: 'Private', imageUrl: 'blob:https://director.test/private',
           sourceFile: timelineImage, duration: 3, effect: 'clean', transition: 'cut', transitionDuration: 0,
-          motion: 'still', intensity: 50, caption: '',
+          motion: 'still', intensity: 50, textLayers: [],
       }],
       selectedClipIds: ['clip-local'],
       audio: { name: localAudio.name, url: 'blob:https://director.test/audio', sourceFile: localAudio },
@@ -241,7 +241,7 @@ describe('Director local project persistence', () => {
       clips: [{
         id: 'clip-local', objectId: localObject.id, title: 'Local clip', imageUrl: 'blob:clip',
         sourceFile: timelineImage, duration: 3, effect: 'clean', transition: 'cut',
-        transitionDuration: 0, motion: 'still', intensity: 50, caption: '',
+        transitionDuration: 0, motion: 'still', intensity: 50, textLayers: [],
       }],
       selectedClipIds: ['clip-local'],
       audio: { name: localAudio.name, url: 'blob:audio', sourceFile: localAudio },

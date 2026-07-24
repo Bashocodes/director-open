@@ -8,7 +8,9 @@ import {
   resolvedPluginParams,
 } from '../../../plugins/registry';
 import { reelDimensions } from './catalog';
-import { drawReelCaption } from './caption';
+import { renderTextLayer } from '../../../lib/text/renderTextLayer';
+import { ensureTextFontsReady } from '../../../lib/text/loadFonts';
+import type { TextLayer } from '../../../shared/directorSchemas';
 import {
   assertKnownMediaLimits,
   imageExtension,
@@ -50,6 +52,24 @@ export type FfmpegCommandPlan = {
   outputName: string;
   duration: number;
 };
+
+/** One full-frame text-layer PNG overlay input, timed clip-locally by FFmpeg. */
+export type TextLayerCommandInput = {
+  clipIndex: number;
+  inputIndex: number;
+  name: string;
+  layer: TextLayer;
+};
+
+function textLayerFadeWindow(clip: ReelClip, layer: TextLayer) {
+  const inSec = Math.min(Math.max(0, layer.timing.inSec), clip.duration);
+  const rawOut = layer.timing.outSec <= 0 ? clip.duration : layer.timing.outSec;
+  const outSec = Math.min(Math.max(inSec, rawOut), clip.duration);
+  const span = Math.max(0, outSec - inSec);
+  const fadeIn = Math.min(Math.max(0, layer.timing.fadeInSec), span);
+  const fadeOut = Math.min(Math.max(0, layer.timing.fadeOutSec), Math.max(0, span - fadeIn));
+  return { inSec, outSec, fadeIn, fadeOut };
+}
 
 export function hasHeavyVisualEffects(project: ReelProject) {
   return project.clips.some((clip) =>
@@ -169,7 +189,7 @@ export function buildFfmpegCommand(
   project: ReelProject,
   imageNames: string[],
   structuralEffectInputIndexes: StructuralEffectInputIndexes,
-  captionInputIndexes: Array<number | null>,
+  textLayerInputs: TextLayerCommandInput[],
   audioInputIndex: number | null,
 ): FfmpegCommandPlan {
   const { width, height } = reelDimensions(project.aspectRatio, project.quality);
@@ -187,9 +207,9 @@ export function buildFfmpegCommand(
       '-i', `structural-effect-${clipIndex}-%04d.png`,
     );
   });
-  captionInputIndexes.forEach((inputIndex, clipIndex) => {
-    if (inputIndex === null) return;
-    args.push('-loop', '1', '-framerate', String(project.fps), '-t', String(project.clips[clipIndex].duration), '-i', `caption-${clipIndex}.png`);
+  // Text-layer PNGs, in ascending input-index order (must match the caller's numbering).
+  [...textLayerInputs].sort((a, b) => a.inputIndex - b.inputIndex).forEach((input) => {
+    args.push('-loop', '1', '-framerate', String(project.fps), '-t', String(project.clips[input.clipIndex].duration), '-i', input.name);
   });
   if (audioInputIndex !== null) args.push('-stream_loop', '-1', '-i', 'music-input');
 
@@ -256,12 +276,30 @@ export function buildFfmpegCommand(
     });
     // Grade the single motion-composited stream once.
     filterParts.push(`[${activeEffectLabel}]${grades || 'null'},format=yuv420p[${baseLabel}]`);
-    const captionIndex = captionInputIndexes[index];
-    if (captionIndex === null) {
+    // Composite each text layer as a full-frame overlay, timed clip-locally.
+    // The glyph pixels come from the shared renderTextLayer PNG; FFmpeg applies
+    // only the enable window and the linear fade envelope.
+    const clipTextInputs = textLayerInputs
+      .filter((input) => input.clipIndex === index)
+      .sort((a, b) => a.inputIndex - b.inputIndex);
+    if (clipTextInputs.length === 0) {
       filterParts.push(`[${baseLabel}]null[${clipLabel}]`);
     } else {
-      filterParts.push(`[${captionIndex}:v]format=rgba[caption-${index}-rgba]`);
-      filterParts.push(`[${baseLabel}][caption-${index}-rgba]overlay=0:0:shortest=1[${clipLabel}]`);
+      let compositeLabel = baseLabel;
+      clipTextInputs.forEach((textInput, textOrdinal) => {
+        const window = textLayerFadeWindow(clip, textInput.layer);
+        const textLabel = `text-${index}-${textOrdinal}`;
+        const fades = [
+          window.fadeIn > 0 ? `fade=in:st=${fixed(window.inSec)}:d=${fixed(window.fadeIn)}:alpha=1` : null,
+          window.fadeOut > 0 ? `fade=out:st=${fixed(window.outSec - window.fadeOut)}:d=${fixed(window.fadeOut)}:alpha=1` : null,
+        ].filter((value): value is string => value !== null);
+        filterParts.push(`[${textInput.inputIndex}:v]format=rgba${fades.length ? `,${fades.join(',')}` : ''}[${textLabel}]`);
+        const nextLabel = textOrdinal === clipTextInputs.length - 1 ? clipLabel : `text-comp-${index}-${textOrdinal}`;
+        filterParts.push(
+          `[${compositeLabel}][${textLabel}]overlay=0:0:enable='between(t,${fixed(window.inSec)},${fixed(window.outSec)})'[${nextLabel}]`,
+        );
+        compositeLabel = nextLabel;
+      });
     }
   });
 
@@ -333,14 +371,15 @@ async function readClipBytes(clip: ReelClip, signal: AbortSignal) {
   return { bytes, extension };
 }
 
-async function makeCaptionOverlay(clip: ReelClip, width: number, height: number) {
-  if (!clip.caption.trim()) return null;
+async function makeTextLayerOverlay(layer: TextLayer, width: number, height: number) {
+  if (!layer.content.trim()) return null;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) return null;
-  drawReelCaption(context, clip.caption, width, height);
+  // Draw at full alpha; FFmpeg's fade filter reproduces the timing envelope.
+  renderTextLayer(context, layer, { width, height, alpha: 1 });
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
 }
@@ -594,15 +633,19 @@ export class BrowserFfmpegRenderer {
         );
       }
 
-      const captionInputIndexes: Array<number | null> = Array(project.clips.length).fill(null);
+      const textLayerInputs: TextLayerCommandInput[] = [];
+      const hasTextLayers = project.clips.some((clip) => clip.textLayers.some((layer) => layer.content.trim()));
+      if (hasTextLayers) await ensureTextFontsReady();
       for (const [index, clip] of project.clips.entries()) {
-        if (this.cancelled) throw new Error('Render cancelled.');
-        const overlay = await makeCaptionOverlay(clip, width, height);
-        if (!overlay) continue;
-        const name = `caption-${index}.png`;
-        await writeInput(name, overlay);
-        captionInputIndexes[index] = nextInputIndex;
-        nextInputIndex += 1;
+        for (const [layerOrdinal, layer] of clip.textLayers.entries()) {
+          if (this.cancelled) throw new Error('Render cancelled.');
+          const overlay = await makeTextLayerOverlay(layer, width, height);
+          if (!overlay) continue;
+          const name = `text-${index}-${layerOrdinal}.png`;
+          await writeInput(name, overlay, false);
+          textLayerInputs.push({ clipIndex: index, inputIndex: nextInputIndex, name, layer });
+          nextInputIndex += 1;
+        }
       }
 
       let audioInputIndex: number | null = null;
@@ -615,7 +658,7 @@ export class BrowserFfmpegRenderer {
         project,
         imageNames,
         structuralEffectInputIndexes,
-        captionInputIndexes,
+        textLayerInputs,
         audioInputIndex,
       );
       progress = ({ progress: value }: { progress: number }) => callbacks.onProgress(Math.min(0.99, Math.max(0, value)));

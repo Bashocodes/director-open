@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VerifyReport } from '../../../lib/verify';
 import { BrowserFfmpegRenderer, buildFfmpegCommand, renderTimeoutMs } from './ffmpegRenderer';
+import { createTextLayer } from '../../../shared/textLayers';
 import type { ReelProject } from './types';
 
 const ffmpegHarness = vi.hoisted(() => ({
@@ -105,8 +106,8 @@ const project: ReelProject = {
   audio: null,
   renderRequested: false,
   clips: [
-    { id: 'a', objectId: 'a', title: 'A', imageUrl: 'blob:local-a', duration: 3, effect: 'hdr', visualEffect: 'none', transition: 'cut', transitionDuration: 0, motion: 'push-in', intensity: 70, caption: '' },
-    { id: 'b', objectId: 'b', title: 'B', imageUrl: 'blob:local-b', duration: 4, effect: 'cinematic', visualEffect: 'none', transition: 'dip-black', transitionDuration: 0.5, motion: 'pull-out', intensity: 60, caption: 'Resolve' },
+    { id: 'a', objectId: 'a', title: 'A', imageUrl: 'blob:local-a', duration: 3, effect: 'hdr', visualEffect: 'none', transition: 'cut', transitionDuration: 0, motion: 'push-in', intensity: 70, textLayers: [] },
+    { id: 'b', objectId: 'b', title: 'B', imageUrl: 'blob:local-b', duration: 4, effect: 'cinematic', visualEffect: 'none', transition: 'dip-black', transitionDuration: 0.5, motion: 'pull-out', intensity: 60, textLayers: [createTextLayer('b-text', { content: 'Resolve', clipDuration: 4 })] },
   ],
 };
 
@@ -138,7 +139,7 @@ describe('FFmpeg reel command compiler', () => {
     vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:ffmpeg-core-${++ffmpegHarness.blobIndex}`);
   });
   it('compiles motion, grading, captions, transitions, and high-quality H.264 output', () => {
-    const plan = buildFfmpegCommand(project, ['image-0.jpg', 'image-1.jpg'], [null, null], [null, 2], null);
+    const plan = buildFfmpegCommand(project, ['image-0.jpg', 'image-1.jpg'], [null, null], [{ clipIndex: 1, inputIndex: 2, name: 'text-1-0.png', layer: project.clips[1].textLayers[0] }], null);
     expect(plan.filterGraph).toContain('zoompan');
     expect(plan.filterGraph).toContain('unsharp');
     expect(plan.filterGraph).toContain('overlay=0:0');
@@ -155,12 +156,38 @@ describe('FFmpeg reel command compiler', () => {
     expect(plan.duration).toBe(6.5);
   });
 
+  it('composites text layers as full-frame overlays with enable windows and fades', () => {
+    const layer = {
+      ...createTextLayer('t-fade', { content: 'HELLO', clipDuration: 3 }),
+      timing: { inSec: 0.5, outSec: 2.5, fadeInSec: 0.5, fadeOutSec: 0.5 },
+    };
+    const single = {
+      ...project,
+      clips: [{ ...project.clips[0], textLayers: [layer] }],
+      selectedClipIds: [],
+    };
+    const plan = buildFfmpegCommand(
+      single,
+      ['image-0.jpg'],
+      [null],
+      [{ clipIndex: 0, inputIndex: 1, name: 'text-0-0.png', layer }],
+      null,
+    );
+    // Looped full-frame PNG input for the layer.
+    expect(plan.args.join(' ')).toContain('-loop 1 -framerate 30 -t 3 -i text-0-0.png');
+    // Glyph pixels come from the shared PNG; FFmpeg only times + fades it.
+    expect(plan.filterGraph).toContain('[1:v]format=rgba');
+    expect(plan.filterGraph).toContain('fade=in:st=0.5:d=0.5:alpha=1');
+    expect(plan.filterGraph).toContain('fade=out:st=2:d=0.5:alpha=1');
+    expect(plan.filterGraph).toContain("overlay=0:0:enable='between(t,0.5,2.5)'");
+  });
+
   it('adds local music as a looped input and maps AAC audio', () => {
     const plan = buildFfmpegCommand(
       { ...project, quality: 'balanced' },
       ['a.jpg', 'b.jpg'],
       [null, null],
-      [null, null],
+      [],
       2,
     );
     expect(plan.args.join(' ')).toContain('-stream_loop -1 -i music-input');
@@ -175,7 +202,7 @@ describe('FFmpeg reel command compiler', () => {
       ['high', '16'],
       ['maximum', '12'],
     ] as const) {
-      const plan = buildFfmpegCommand({ ...project, quality }, ['a.jpg', 'b.jpg'], [null, null], [null, null], null);
+      const plan = buildFfmpegCommand({ ...project, quality }, ['a.jpg', 'b.jpg'], [null, null], [], null);
       const crfIndex = plan.args.indexOf('-crf');
       expect(plan.args.slice(crfIndex, crfIndex + 2)).toEqual(['-crf', expectedCrf]);
       expect(plan.args.slice(crfIndex - 2, crfIndex)).toEqual(['-preset', 'veryfast']);
@@ -188,7 +215,7 @@ describe('FFmpeg reel command compiler', () => {
       quality: 'maximum' as const,
       clips: [{ ...project.clips[0], effect: 'bleach-bypass' as const, visualEffect: 'pixel-sort' as const, motion: 'drift-down-right' as const }],
     };
-    const plan = buildFfmpegCommand(expanded, ['a.jpg'], [1], [null], null);
+    const plan = buildFfmpegCommand(expanded, ['a.jpg'], [1], [], null);
     expect(plan.args.join(' ')).toContain('-preset veryfast -tune grain -crf 12');
     expect(plan.filterGraph).toContain('s=1080x1920');
     expect(plan.filterGraph).toContain('saturation=');
@@ -215,7 +242,7 @@ describe('FFmpeg reel command compiler', () => {
         visualEffectStack: ['pixel-sort'],
       }],
     };
-    const plan = buildFfmpegCommand(sequenced, ['a.jpg'], [1], [null], null);
+    const plan = buildFfmpegCommand(sequenced, ['a.jpg'], [1], [], null);
     expect(plan.args.join(' ')).toContain('-framerate 12 -start_number 0 -i structural-effect-0-%04d.png');
     expect(plan.args.join(' ').match(/structural-effect-0-%04d\.png/g)).toHaveLength(1);
     expect(plan.filterGraph).toContain('[1:v]fps=24');
@@ -239,7 +266,7 @@ describe('FFmpeg reel command compiler', () => {
         visualEffectStack: ['motion-echo'],
       }],
     } as unknown as ReelProject;
-    const plan = buildFfmpegCommand(echoProject, ['a.jpg'], [null], [null], null);
+    const plan = buildFfmpegCommand(echoProject, ['a.jpg'], [null], [], null);
     const zoomIndex = plan.filterGraph.indexOf('zoompan=');
     const echoIndex = plan.filterGraph.indexOf('lagfun=decay=');
     expect(zoomIndex).toBeGreaterThanOrEqual(0);
@@ -262,7 +289,7 @@ describe('FFmpeg reel command compiler', () => {
         visualEffectStack: ['crt-scan'],
       }],
     } as unknown as ReelProject;
-    const plan = buildFfmpegCommand(crtProject, ['a.jpg'], [null], [null], null);
+    const plan = buildFfmpegCommand(crtProject, ['a.jpg'], [null], [], null);
     expect(plan.filterGraph).toContain("drawgrid=w=iw:h=4:y='mod(t*65,4)'");
     expect(plan.filterGraph).toContain('rgbashift=rh=1:bh=-1:edge=smear');
     expect(plan.filterGraph).toContain("crop=iw-2:ih:x='1+sin(2*PI*t*7)'");
@@ -289,7 +316,7 @@ describe('FFmpeg reel command compiler', () => {
         ],
       }],
     };
-    const plan = buildFfmpegCommand(structuralProject, ['a.jpg'], [1], [null], null);
+    const plan = buildFfmpegCommand(structuralProject, ['a.jpg'], [1], [], null);
     expect(plan.args.join(' ').match(/structural-effect-0-%04d\.png/g)).toHaveLength(1);
     expect(plan.filterGraph).toContain('[1:v]fps=30');
     expect(plan.filterGraph.match(/zoompan=/g)).toHaveLength(1);
@@ -305,7 +332,7 @@ describe('FFmpeg reel command compiler', () => {
         visualEffectStack: ['halftone-reveal'],
       }],
     };
-    const plan = buildFfmpegCommand(textureProject, ['a.jpg'], [1], [null], null);
+    const plan = buildFfmpegCommand(textureProject, ['a.jpg'], [1], [], null);
     expect(plan.args.join(' ')).toContain('-preset veryfast -tune grain -crf 16');
   });
 
@@ -327,7 +354,7 @@ describe('FFmpeg reel command compiler', () => {
         visualEffectStack: ['pixel-sort', 'crt-scan', 'motion-echo'],
       }],
     };
-    const plan = buildFfmpegCommand(stacked, ['a.jpg'], [1], [null], null);
+    const plan = buildFfmpegCommand(stacked, ['a.jpg'], [1], [], null);
     expect(plan.filterGraph).toContain('unsharp=');
     expect(plan.filterGraph).toContain('colorbalance=');
     expect(plan.filterGraph).toContain('drawgrid=');

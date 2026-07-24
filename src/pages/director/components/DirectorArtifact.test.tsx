@@ -24,7 +24,16 @@ const response: DirectorResponse = {
     motion: 'push-in',
     duration: 3,
     intensity: 55,
-    caption: 'A bounded caption',
+    layerId: null,
+    content: null,
+    textX: null,
+    textY: null,
+    fontId: null,
+    sizePreset: null,
+    textColor: null,
+    align: null,
+    inSec: null,
+    outSec: null,
   }],
 };
 
@@ -38,6 +47,5 @@ describe('Director reel action artifact', () => {
     expect(receipt).toHaveTextContent('push-in motion');
     expect(receipt).toHaveTextContent('3s duration');
     expect(receipt).toHaveTextContent('55% strength');
-    expect(receipt).toHaveTextContent('caption “A bounded caption”');
   });
 });

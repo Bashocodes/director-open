@@ -93,7 +93,7 @@ export function serializeDirectorContext(
         motion: clip.motion,
         intensity: clip.intensity,
         pluginParams: clip.pluginParams || {},
-        caption: compactText(clip.caption, 180),
+        textLayers: clip.textLayers.map((layer) => compactText(layer.content, 120)).filter(Boolean),
       })),
       hasAudio: Boolean(input.reelProject.audio),
     } : null,

@@ -9,13 +9,27 @@ import type {
   ReelTransition,
   ReelVisualEffect,
   StorySequence,
+  TextLayer,
+  TextLayerStyle,
 } from '../../../shared/directorSchemas';
+import { MAX_TEXT_LAYER_CONTENT } from '../../../shared/directorSchemas';
 import {
   resolveReelVisualEffect,
 } from '../../../shared/reelVisualEffects';
+import {
+  createTextLayer,
+  MAX_TEXT_LAYERS_PER_CLIP,
+  sizePresetToPx,
+} from '../../../shared/textLayers';
+import { FONT_CATALOG } from '../../../lib/text/fontCatalog';
 import { pluginRegistry } from '../../../plugins/registry';
 import type { CanvasObject } from '../types';
 import { reelGradeStack, reelVisualEffectStack, type ReelClip, type ReelProject } from './types';
+
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const TEXT_ACTION_TYPES = new Set([
+  'add_text_layer', 'update_text_layer', 'move_text_layer', 'remove_text_layer',
+]);
 
 const MAX_CLIPS = 16;
 const MAX_TRANSITION_DURATION = 2;
@@ -209,8 +223,23 @@ function emptyAction(type: DirectorReelAction['type']): DirectorReelAction {
     motion: null,
     duration: null,
     intensity: null,
-    caption: null,
+    layerId: null,
+    content: null,
+    textX: null,
+    textY: null,
+    fontId: null,
+    sizePreset: null,
+    textColor: null,
+    align: null,
+    inSec: null,
+    outSec: null,
   };
+}
+
+function clampNullable(value: number | null, min: number, max: number): number | null {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : null;
 }
 
 type CanonicalDirectorReelAction = Omit<DirectorReelAction, 'visualEffect'> & {
@@ -241,7 +270,22 @@ function sanitizeAction(action: DirectorReelAction): CanonicalDirectorReelAction
       motion: action.motion && pluginRegistry.getMotion(action.motion) ? action.motion : null,
       duration,
       intensity,
-      caption: typeof action.caption === 'string' ? action.caption.slice(0, 180) : null,
+    };
+  }
+  if (TEXT_ACTION_TYPES.has(action.type)) {
+    return {
+      ...canonical,
+      clipIds: uniqueIds(action.clipIds),
+      layerId: typeof action.layerId === 'string' ? action.layerId.slice(0, 160) : null,
+      content: typeof action.content === 'string' ? action.content.slice(0, MAX_TEXT_LAYER_CONTENT) : null,
+      textX: clampNullable(action.textX, 0, 1),
+      textY: clampNullable(action.textY, 0, 1),
+      fontId: action.fontId && FONT_CATALOG[action.fontId] ? action.fontId : null,
+      sizePreset: action.sizePreset ?? null,
+      textColor: typeof action.textColor === 'string' && HEX_COLOR.test(action.textColor) ? action.textColor : null,
+      align: action.align ?? null,
+      inSec: clampNullable(action.inSec, 0, 120),
+      outSec: clampNullable(action.outSec, 0, 120),
     };
   }
   if (action.type === 'set_project') {
@@ -279,7 +323,7 @@ function clipFromObject(
     transitionDuration: index === 0 ? 0 : DEFAULT_TRANSITION_DURATION,
     motion: beat ? motions[index % motions.length] : index % 2 ? 'pull-out' : 'push-in',
     intensity: DEFAULT_INTENSITY,
-    caption: '',
+    textLayers: [],
   };
 }
 
@@ -381,12 +425,88 @@ function clipsEqualForEdit(left: ReelClip, right: ReelClip) {
     && Boolean(left.durationWasUserSet) === Boolean(right.durationWasUserSet)
     && left.intensity === right.intensity
     && JSON.stringify(left.pluginParams || {}) === JSON.stringify(right.pluginParams || {})
-    && left.caption === right.caption;
+    && JSON.stringify(left.textLayers) === JSON.stringify(right.textLayers);
 }
 
 export type AppliedDirectorReelAction = DirectorReelAction & {
   promotedPixelSortClipIds?: string[];
 };
+
+function textStyleOverrides(action: CanonicalDirectorReelAction): Partial<TextLayerStyle> {
+  const overrides: Partial<TextLayerStyle> = {};
+  if (action.fontId) overrides.fontId = action.fontId;
+  if (action.sizePreset) {
+    overrides.sizePreset = action.sizePreset;
+    if (action.sizePreset !== 'custom') overrides.sizePx = sizePresetToPx(action.sizePreset, 64);
+  }
+  if (action.textColor) overrides.color = action.textColor;
+  if (action.align) overrides.align = action.align;
+  return overrides;
+}
+
+/** Apply one sanitized text-layer action to its target clip. Returns null on no-op. */
+function applyTextLayerAction(
+  project: ReelProject,
+  action: CanonicalDirectorReelAction,
+  explicitClips: boolean,
+  createId: (prefix: string) => string,
+): { project: ReelProject; clipId: string; layerId: string | null } | null {
+  const requestedClipId = uniqueIds(action.clipIds).find((id) => project.clips.some((clip) => clip.id === id));
+  const targetClipId = requestedClipId
+    ?? (explicitClips
+      ? null
+      : project.selectedClipIds.find((id) => project.clips.some((clip) => clip.id === id))
+        ?? project.clips[0]?.id
+        ?? null);
+  if (!targetClipId) return null;
+  const clip = project.clips.find((item) => item.id === targetClipId)!;
+  const before = JSON.stringify(clip.textLayers);
+  let layers = clip.textLayers;
+  let affectedLayerId: string | null = null;
+
+  if (action.type === 'add_text_layer') {
+    if (clip.textLayers.length >= MAX_TEXT_LAYERS_PER_CLIP) return null;
+    const id = createId('text');
+    layers = [...clip.textLayers, createTextLayer(id, {
+      content: action.content && action.content.trim() ? action.content : 'Text',
+      x: action.textX ?? 0.5,
+      y: action.textY ?? 0.5,
+      clipDuration: clip.duration,
+      style: textStyleOverrides(action),
+      timing: {
+        inSec: action.inSec ?? 0,
+        outSec: action.outSec ?? clip.duration,
+        fadeInSec: 0,
+        fadeOutSec: 0,
+      },
+    })];
+    affectedLayerId = id;
+  } else {
+    const target = action.layerId
+      ? clip.textLayers.find((layer) => layer.id === action.layerId)
+      : clip.textLayers[clip.textLayers.length - 1];
+    if (!target) return null;
+    affectedLayerId = target.id;
+    if (action.type === 'remove_text_layer') {
+      layers = clip.textLayers.filter((layer) => layer.id !== target.id);
+    } else {
+      const next: TextLayer = { ...target, style: { ...target.style }, timing: { ...target.timing } };
+      if (action.textX !== null) next.x = action.textX;
+      if (action.textY !== null) next.y = action.textY;
+      if (action.type === 'update_text_layer') {
+        if (action.content !== null) next.content = action.content;
+        Object.assign(next.style, textStyleOverrides(action));
+        if (action.inSec !== null) next.timing.inSec = action.inSec;
+        if (action.outSec !== null) next.timing.outSec = action.outSec;
+      }
+      layers = clip.textLayers.map((layer) => (layer.id === target.id ? next : layer));
+    }
+  }
+
+  if (JSON.stringify(layers) === before) return null;
+  const clips = project.clips.map((item) => (item.id === targetClipId ? { ...item, textLayers: layers } : item));
+  return { project: { ...project, clips }, clipId: targetClipId, layerId: affectedLayerId };
+}
 
 export function applyDirectorReelActions(options: {
   project: ReelProject | null;
@@ -543,8 +663,7 @@ export function applyDirectorReelActions(options: {
         || action.transition !== null
         || action.motion !== null
         || action.duration !== null
-        || action.intensity !== null
-        || action.caption !== null;
+        || action.intensity !== null;
       if (!targets.length || !hasEdit) continue;
       const targeted = new Set(targets);
       const before = new Map(project.clips.map((clip) => [clip.id, clip]));
@@ -574,7 +693,6 @@ export function applyDirectorReelActions(options: {
           duration: action.duration ?? clip.duration,
           durationWasUserSet: action.duration !== null ? true : clip.durationWasUserSet,
           intensity: action.intensity ?? clip.intensity,
-          caption: action.caption ?? clip.caption,
         };
       });
       const next = normalizeReelProject({ ...project, clips: edited });
@@ -584,7 +702,7 @@ export function applyDirectorReelActions(options: {
         return Boolean(previousClip && nextClip && !clipsEqualForEdit(previousClip, nextClip));
       });
       if (!changedIds.length) continue;
-      const changedField = <K extends 'effect' | 'visualEffect' | 'transition' | 'transitionDuration' | 'motion' | 'duration' | 'durationWasUserSet' | 'intensity' | 'caption'>(field: K) => (
+      const changedField = <K extends 'effect' | 'visualEffect' | 'transition' | 'transitionDuration' | 'motion' | 'duration' | 'durationWasUserSet' | 'intensity'>(field: K) => (
         changedIds.some((id) => before.get(id)?.[field] !== next.clips.find((clip) => clip.id === id)?.[field])
       );
       const promotedPixelSortClipIds = changedIds.filter((id) => {
@@ -609,9 +727,17 @@ export function applyDirectorReelActions(options: {
         duration: action.duration !== null
           && (changedField('duration') || changedField('durationWasUserSet')) ? action.duration : null,
         intensity: action.intensity !== null && changedField('intensity') ? action.intensity : null,
-        caption: action.caption !== null && changedField('caption') ? action.caption : null,
         promotedPixelSortClipIds: promotedPixelSortClipIds.length ? promotedPixelSortClipIds : undefined,
       });
+      shouldOpen = true;
+      continue;
+    }
+
+    if (TEXT_ACTION_TYPES.has(action.type)) {
+      const result = applyTextLayerAction(project, action, explicitClips, options.createId);
+      if (!result) continue;
+      project = result.project;
+      appliedActions.push({ ...action, clipIds: [result.clipId], layerId: result.layerId });
       shouldOpen = true;
       continue;
     }
@@ -703,7 +829,9 @@ export function toReelProjectContext(project: ReelProject | null, open: boolean)
       transition: clip.transition as ReelTransition,
       motion: clip.motion as ReelMotion,
       intensity: clip.intensity,
-      caption: clip.caption,
+      textLayers: clip.textLayers.slice(0, MAX_TEXT_LAYERS_PER_CLIP).map((layer) => ({
+        content: layer.content.replace(/\s+/g, ' ').trim().slice(0, 120),
+      })),
     })),
   };
 }
@@ -772,10 +900,17 @@ export function describeReelActionReceipt(action: AppliedDirectorReelAction) {
           ? `extended ${action.promotedPixelSortClipIds.length === 1 ? 'its' : 'their'} untouched 3.2s default to 6.4s for pixel sort`
           : null,
         action.intensity !== null ? `${action.intensity}% strength` : null,
-        action.caption !== null ? `caption “${shortCaption(action.caption)}”` : null,
       ].filter((value): value is string => Boolean(value));
       return `updated ${clipTarget}${settings.length ? `: ${settings.join(', ')}` : ''}`;
     }
+    case 'add_text_layer':
+      return `added a text layer${action.content ? ` “${shortCaption(action.content)}”` : ''}`;
+    case 'update_text_layer':
+      return `updated a text layer${action.content ? ` “${shortCaption(action.content)}”` : ''}`;
+    case 'move_text_layer':
+      return 'moved a text layer';
+    case 'remove_text_layer':
+      return 'removed a text layer';
     case 'set_project': {
       const settings = [
         action.aspectRatio,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createTextLayer } from '../../../shared/textLayers';
 import {
   assertKnownMediaLimits,
   imageExtension,
@@ -23,7 +24,7 @@ function project(): ReelProject {
     clips: [{
       id: 'clip-1', objectId: null, title: 'private-name', imageUrl: 'blob:image', sourceFile,
       duration: 3, effect: 'clean', transition: 'cut', transitionDuration: 0,
-      motion: 'still', intensity: 50, caption: '',
+      motion: 'still', intensity: 50, textLayers: [],
     }],
   };
 }
@@ -46,7 +47,7 @@ describe('local reel media safeguards', () => {
     const initial = project();
     expect(reelProjectFingerprint(initial)).not.toBe(reelProjectFingerprint({
       ...initial,
-      clips: initial.clips.map((clip) => ({ ...clip, caption: 'Changed' })),
+      clips: initial.clips.map((clip) => ({ ...clip, textLayers: [createTextLayer('t-changed', { content: 'Changed' })] })),
     }));
     expect(reelProjectFingerprint(initial)).not.toBe(reelProjectFingerprint({
       ...initial,

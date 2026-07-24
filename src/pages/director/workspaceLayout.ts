@@ -8,9 +8,9 @@
  * key so nothing here leaks into project JSON or model/Worker context.
  */
 
-export type InspectorSectionId = 'output' | 'look' | 'motion' | 'timing';
+export type InspectorSectionId = 'output' | 'look' | 'motion' | 'text' | 'timing';
 
-export const INSPECTOR_SECTION_IDS: InspectorSectionId[] = ['output', 'look', 'motion', 'timing'];
+export const INSPECTOR_SECTION_IDS: InspectorSectionId[] = ['output', 'look', 'motion', 'text', 'timing'];
 
 export type PlayerFit = 'fit' | 'fill';
 
@@ -39,7 +39,7 @@ export type WorkspaceLayoutAction =
 const STORAGE_KEY = 'director-open.workspace.v1';
 
 function defaultInspectorSections(): Record<InspectorSectionId, boolean> {
-  return { output: true, look: true, motion: true, timing: true };
+  return { output: true, look: true, motion: true, text: true, timing: true };
 }
 
 /** New-user defaults: chat expanded, drawer closed, all sections open, fit. */

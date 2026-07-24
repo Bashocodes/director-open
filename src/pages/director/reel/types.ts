@@ -1,7 +1,10 @@
 import type {
   ReelAspectRatio,
   ReelQuality,
+  TextLayer,
 } from '../../../shared/directorSchemas';
+
+export type { TextLayer };
 
 export type ReelClip = {
   id: string;
@@ -24,7 +27,8 @@ export type ReelClip = {
   intensity: number;
   /** Additive parameters for registered plugins; legacy strength/blend stay on their old fields. */
   pluginParams?: Record<string, Record<string, unknown>>;
-  caption: string;
+  /** Ordered text layers (later = drawn on top). Replaces the legacy caption string. */
+  textLayers: TextLayer[];
 };
 
 function unique<T extends string>(values: readonly T[]) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { serializeDirectorContext, type DirectorContextInput } from './directorContext';
 import { EMPTY_SUMMARY } from '../../pages/director/types';
+import { createTextLayer } from '../../shared/textLayers';
 
 const input: DirectorContextInput = {
   mode: 'animate',
@@ -55,7 +56,7 @@ const input: DirectorContextInput = {
       transitionDuration: 0.5,
       motion: 'push-in',
       intensity: 55,
-      caption: 'Opening',
+      textLayers: [createTextLayer('t-open', { content: 'Opening' })],
     }],
     selectedClipIds: ['clip-1'],
     audio: null,

@@ -27,7 +27,7 @@ const emptySummary = {
 
 function fixtureProject(withReel = true): DirectorProjectFile {
   return DirectorProjectFileSchema.parse({
-    version: 1,
+    version: 2,
     sessionId: 'fixture-session-1',
     updatedAt: '2026-01-02T03:04:05.000Z',
     title: 'Fixture project',
@@ -68,7 +68,7 @@ function fixtureProject(withReel = true): DirectorProjectFile {
         transitionDuration: 0,
         motion: 'still',
         intensity: 60,
-        caption: '',
+        textLayers: [],
       }],
       selectedClipIds: ['clip-1'],
       audio: null,
@@ -116,7 +116,16 @@ function reelAction(
     motion: null,
     duration: null,
     intensity: null,
-    caption: null,
+    layerId: null,
+    content: null,
+    textX: null,
+    textY: null,
+    fontId: null,
+    sizePreset: null,
+    textColor: null,
+    align: null,
+    inSec: null,
+    outSec: null,
     ...values,
   };
 }

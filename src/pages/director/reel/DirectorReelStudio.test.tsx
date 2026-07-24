@@ -57,7 +57,7 @@ const initialProject: ReelProject = {
   clips: [{
     id: 'clip-1', objectId: 'reference-1', title: 'Quiet Resolve', imageUrl: 'blob:local-studio-reference',
     duration: 2, effect: 'clean', transition: 'cut', transitionDuration: 0,
-    motion: 'still', intensity: 50, caption: '',
+    motion: 'still', intensity: 50, textLayers: [],
   }],
 };
 

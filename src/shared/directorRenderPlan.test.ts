@@ -8,10 +8,11 @@ import {
   buildHeadlessRenderPlan,
   HeadlessRenderPlanError,
 } from './directorRenderPlan';
+import { createTextLayer } from './textLayers';
 
 function fixtureProject(withClip = true): DirectorProjectFile {
   return DirectorProjectFileSchema.parse({
-    version: 1,
+    version: 2,
     sessionId: 'render-fixture-1',
     updatedAt: '2026-01-02T03:04:05.000Z',
     title: 'Render fixture',
@@ -42,7 +43,7 @@ function fixtureProject(withClip = true): DirectorProjectFile {
         transitionDuration: 0,
         motion: 'push-in',
         intensity: 70,
-        caption: 'Opening',
+        textLayers: [createTextLayer('clip-1-text', { content: 'Opening', clipDuration: 3 })],
       }] : [],
       selectedClipIds: withClip ? ['clip-1'] : [],
       audio: null,
@@ -68,12 +69,12 @@ describe('Director headless render plan', () => {
         effects: ['pixel-sort'],
         pattern: 'structural-effect-0-%04d.png',
       }],
-      captions: [{ inputIndex: 2, clipId: 'clip-1', name: 'caption-0.png' }],
+      textLayers: [{ inputIndex: 2, clipId: 'clip-1', layerId: 'clip-1-text', name: 'text-0-0.png' }],
       audio: null,
     });
     expect(plan.args.join(' ')).toContain('-i image-0.media');
     expect(plan.args.join(' ')).toContain('-i structural-effect-0-%04d.png');
-    expect(plan.args.join(' ')).toContain('-i caption-0.png');
+    expect(plan.args.join(' ')).toContain('-i text-0-0.png');
     expect(plan.args.join(' ')).toContain('-c:v libx264');
     expect(plan.filterGraph).toContain('[1:v]fps=30');
     expect(plan.filterGraph).toContain('[2:v]format=rgba');
