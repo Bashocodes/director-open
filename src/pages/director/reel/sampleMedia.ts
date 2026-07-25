@@ -21,18 +21,18 @@ export type SampleImage = {
 
 export const SAMPLE_IMAGES: readonly SampleImage[] = [
   {
-    id: 'temple-panorama',
-    fileName: 'temple-panorama.jpg',
-    title: 'Temple panorama',
-    note: 'Dense architectural detail and real depth — shows tilt shift, halftone and camera moves.',
-    path: 'samples/temple-panorama.jpg',
+    id: 'concept-vehicle',
+    fileName: 'concept-vehicle.jpg',
+    title: 'Concept vehicle',
+    note: 'Clean form against a flat backdrop with hot glowing wheels — shows the flare, bloom and neon-edge effects.',
+    path: 'samples/concept-vehicle.jpg',
   },
   {
-    id: 'graphic-portrait',
-    fileName: 'graphic-portrait.jpg',
-    title: 'Graphic portrait',
-    note: 'Flat colour and bold line — shows grades, light leaks and edge work.',
-    path: 'samples/graphic-portrait.jpg',
+    id: 'mountain-night',
+    fileName: 'mountain-night.jpg',
+    title: 'Mountain at night',
+    note: 'Real depth from foreground scrub to lit peak — shows tilt shift, grades and camera moves.',
+    path: 'samples/mountain-night.jpg',
   },
 ];
 
