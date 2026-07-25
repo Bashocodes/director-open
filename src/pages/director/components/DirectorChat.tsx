@@ -60,8 +60,8 @@ type Props = {
 };
 
 const quickActions = [
-  ['Compile direction', 'Compile the selected visual ingredients into one Direction Contract. Resolve conflicts and preserve my locks and exclusions.'],
-  ['Build visual story', 'Turn the approved Direction Contract into a six-beat visual story with emotional progression, camera decisions, motion, and continuity locks.'],
+  ['Compile direction', 'Compile the selected visual ingredients into one Direction brief. Resolve conflicts and preserve my locks and exclusions.'],
+  ['Build visual story', 'Turn the approved Direction brief into a six-beat visual story with emotional progression, camera decisions, motion, and continuity locks.'],
   ['Check drift', 'Validate the current sequence for identity, silhouette, palette, lighting, material, and world drift. Repair only what is inconsistent.'],
   ['Make reel', 'Open Reel Studio and turn the selected visual references into a polished vertical reel. Use cinematic grading, varied camera motion, restrained crossfades, and a coherent pace.'],
   ['Render reel', 'Prepare the current reel for a high-quality local MP4 render on this device.'],
@@ -129,7 +129,7 @@ export function DirectorChat(props: Props) {
         <div>
           <span className="eyebrow">DIRECTOR · VISUAL EXPERT</span>
           <h2>Creative Director + Storyteller</h2>
-          <p>Sees the canvas state · remembers the active Direction Contract</p>
+          <p>Sees the canvas state · remembers the active Direction brief</p>
         </div>
         <div className="chat-head-actions">
           <button
@@ -287,7 +287,7 @@ export function DirectorChat(props: Props) {
               title={label === 'Compile direction' && props.referenceCount < 2
                 ? 'Add at least two references first'
                 : label === 'Build visual story' && !props.hasContract
-                  ? 'Compile a Direction Contract first'
+                  ? 'Compile a Direction brief first'
                   : label === 'Check drift' && !props.hasSequence
                     ? 'Build a visual story first'
                     : label === 'Make reel' && props.referenceCount < 1

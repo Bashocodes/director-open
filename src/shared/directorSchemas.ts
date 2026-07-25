@@ -23,7 +23,7 @@ const PercentageScoreSchema = z.number().min(0).max(100).overwrite((score) => (
   score > 0 && score < 1 ? Math.round(score * 1_000) / 10 : score
 ));
 
-export const DirectionContractSchema = z.object({
+export const DirectionBriefSchema = z.object({
   title: z.string(),
   objective: z.string(),
   inheritance: z.array(z.object({
@@ -376,7 +376,7 @@ export function describeDirectorActionSchema() {
 export const DirectorResponseSchema = z.object({
   message: z.string(),
   mode: z.enum(['inspect', 'inherit', 'combine', 'create', 'animate', 'export']),
-  directionContract: DirectionContractSchema.nullable(),
+  directionBrief: DirectionBriefSchema.nullable(),
   sequence: StorySequenceSchema.nullable(),
   continuity: ContinuityReportSchema.nullable(),
   canvasActions: z.array(DirectorCanvasActionSchema).max(MAX_DIRECTOR_ACTIONS),
@@ -391,7 +391,7 @@ export const DIRECTOR_RESPONSE_JSON_SCHEMA: Record<string, unknown> = {
   properties: {
     message: { type: 'string' },
     mode: { type: 'string', enum: ['inspect', 'inherit', 'combine', 'create', 'animate', 'export'] },
-    directionContract: {
+    directionBrief: {
       anyOf: [{
         type: 'object',
         additionalProperties: false,
@@ -542,7 +542,7 @@ export const DIRECTOR_RESPONSE_JSON_SCHEMA: Record<string, unknown> = {
     },
     suggestedActions: { type: 'array', items: { type: 'string' } },
   },
-  required: ['message', 'mode', 'directionContract', 'sequence', 'continuity', 'canvasActions', 'reelActions', 'suggestedActions'],
+  required: ['message', 'mode', 'directionBrief', 'sequence', 'continuity', 'canvasActions', 'reelActions', 'suggestedActions'],
 };
 
 export const VisualSummarySchema = z.object({
@@ -587,7 +587,7 @@ export const DirectorContextSchema = z.object({
     text: z.string().max(4_000),
     label: z.string().max(120).nullable(),
   }).strict()).max(10),
-  directionContract: DirectionContractSchema.nullable(),
+  directionBrief: DirectionBriefSchema.nullable(),
   sequence: StorySequenceSchema.nullable(),
   reelProject: ReelProjectContextSchema.nullable().default(null),
 }).strict();
@@ -601,7 +601,7 @@ export const DirectorRequestSchema = z.object({
 
 export type DirectorModel = z.infer<typeof DirectorModelSchema>;
 export type InheritanceChannel = z.infer<typeof InheritanceChannelSchema>;
-export type DirectionContract = z.infer<typeof DirectionContractSchema>;
+export type DirectionBrief = z.infer<typeof DirectionBriefSchema>;
 export type StoryBeat = z.infer<typeof StoryBeatSchema>;
 export type StorySequence = z.infer<typeof StorySequenceSchema>;
 export type ContinuityReport = z.infer<typeof ContinuityReportSchema>;

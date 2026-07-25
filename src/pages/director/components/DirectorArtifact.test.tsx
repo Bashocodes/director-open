@@ -8,7 +8,7 @@ const response: DirectorResponse = {
   mode: 'animate',
   suggestedActions: [],
   canvasActions: [],
-  directionContract: null,
+  directionBrief: null,
   sequence: null,
   continuity: null,
   reelActions: [{

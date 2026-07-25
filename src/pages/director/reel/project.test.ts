@@ -81,7 +81,7 @@ describe('Director reel project tools', () => {
     const response = {
       message: 'I initialized a kinetic timeline.',
       mode: 'animate' as const,
-      directionContract: null,
+      directionBrief: null,
       sequence: null,
       continuity: null,
       canvasActions: [],
@@ -104,7 +104,7 @@ describe('Director reel project tools', () => {
     const response = {
       message: 'The direction is coherent.',
       mode: 'create' as const,
-      directionContract: null,
+      directionBrief: null,
       sequence: null,
       continuity: null,
       canvasActions: [],

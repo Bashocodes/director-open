@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import {
   DEFAULT_DIRECTOR_MODEL,
   type ContinuityReport,
-  type DirectionContract,
+  type DirectionBrief,
   type DirectorModel,
   type DirectorResponse,
   type InheritanceChannel,
@@ -247,7 +247,7 @@ export function DirectorPage() {
   const [mode, setMode] = useState<CanvasMode>(() => initialProject?.mode || 'inspect');
   const [goal, setGoal] = useState(() => initialProject?.goal || 'Create a distinctive visual direction and turn it into a coherent six-beat story.');
   const [exclusions, setExclusions] = useState<string[]>(() => initialProject?.exclusions || []);
-  const [contract, setContract] = useState<DirectionContract | null>(() => initialProject?.contract || null);
+  const [contract, setContract] = useState<DirectionBrief | null>(() => initialProject?.contract || null);
   const [sequence, setSequence] = useState<StorySequence | null>(() => initialProject?.sequence || null);
   const [continuity, setContinuity] = useState<ContinuityReport | null>(() => initialProject?.continuity || null);
   const [reelProject, setReelProject] = useState<ReelProject | null>(() => initialProject?.reelProject || null);
@@ -541,8 +541,8 @@ export function DirectorPage() {
     }, response, actionResults, newId);
     let nextObjects = project.objects;
 
-    if (response.directionContract) {
-      setContract(response.directionContract);
+    if (response.directionBrief) {
+      setContract(response.directionBrief);
       if (!response.sequence) {
         setSequence(null);
         setContinuity(null);
@@ -550,13 +550,13 @@ export function DirectorPage() {
       }
       const contractObject: CanvasObject = {
         id: 'direction-contract',
-        title: response.directionContract.title,
-        subtitle: response.directionContract.objective,
+        title: response.directionBrief.title,
+        subtitle: response.directionBrief.objective,
         kind: 'contract',
         source: 'CONTRACT',
         position: nextObjects.find((object) => object.id === 'direction-contract')?.position || { x: 1_160, y: 220 },
         inherit: [],
-        locks: response.directionContract.locks,
+        locks: response.directionBrief.locks,
         summary: EMPTY_SUMMARY,
       };
       nextObjects = [...nextObjects.filter((object) => object.id !== contractObject.id), contractObject];
@@ -720,7 +720,7 @@ export function DirectorPage() {
     const response: DirectorResponse = {
       message: pendingProposal.explanation,
       mode: pendingModeRef.current,
-      directionContract: null,
+      directionBrief: null,
       sequence: null,
       continuity: null,
       canvasActions,
@@ -755,20 +755,20 @@ export function DirectorPage() {
     if (nextMode === 'combine') {
       if (referenceCount < 2) {
         setMode('inspect');
-        notify('Place at least two visual references on the canvas, then Combine can compile their inheritance into one Direction Contract.');
+        notify('Place at least two visual references on the canvas, then Combine can compile their inheritance into one Direction brief.');
         return;
       }
       setMode('combine');
-      void send('Compile the selected visual ingredients into one Direction Contract. Resolve conflicts and preserve my locks and exclusions.', 'Compile direction', 'combine');
+      void send('Compile the selected visual ingredients into one Direction brief. Resolve conflicts and preserve my locks and exclusions.', 'Compile direction', 'combine');
       return;
     }
     if (nextMode === 'create') {
       if (!contract) {
-        notify('Compile a Direction Contract first. Create uses that approved contract—not loose references—to build the story.');
+        notify('Compile a Direction brief first. Create uses that approved contract—not loose references—to build the story.');
         return;
       }
       setMode('create');
-      void send('Turn the approved Direction Contract into a six-beat visual story with emotional progression, camera decisions, motion, and continuity locks.', 'Build visual story', 'create');
+      void send('Turn the approved Direction brief into a six-beat visual story with emotional progression, camera decisions, motion, and continuity locks.', 'Build visual story', 'create');
       return;
     }
     if (nextMode === 'animate') {

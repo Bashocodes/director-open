@@ -2,7 +2,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Check, Expand, LockKeyhole, Sparkles, TriangleAlert, X } from 'lucide-react';
 import type {
   ContinuityReport,
-  DirectionContract,
+  DirectionBrief,
   InheritanceChannel,
   StoryBeat,
 } from '../../../shared/directorSchemas';
@@ -12,7 +12,7 @@ import { INHERITANCE_LABELS } from '../types';
 export type DirectorNodeData = {
   object: CanvasObject;
   mode: CanvasMode;
-  contract?: DirectionContract | null;
+  contract?: DirectionBrief | null;
   beat?: StoryBeat;
   continuity?: ContinuityReport['findings'][number];
   onToggleChannel: (objectId: string, channel: InheritanceChannel) => void;
@@ -53,7 +53,7 @@ export function DirectorNode({ data, selected }: NodeProps<DirectorFlowNode>) {
 
       {isContract ? (
         <div className="contract-node-body">
-          <span className="node-kicker"><Sparkles size={11} /> Direction Contract</span>
+          <span className="node-kicker"><Sparkles size={11} /> Direction brief</span>
           <h3>{contract?.title || object.title}</h3>
           <p>{contract?.objective || object.subtitle}</p>
           <div className="lock-grid">

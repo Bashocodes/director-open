@@ -1,6 +1,6 @@
 import type {
   ContinuityReport,
-  DirectionContract,
+  DirectionBrief,
   StorySequence,
 } from '../../shared/directorSchemas';
 import type { CanvasMode, CanvasObject, ChatTurn } from '../../pages/director/types';
@@ -16,7 +16,7 @@ export type DirectorContextInput = {
   exclusions: string[];
   objects: CanvasObject[];
   selectedIds: string[];
-  contract: DirectionContract | null;
+  contract: DirectionBrief | null;
   sequence: StorySequence | null;
   continuity: ContinuityReport | null;
   reelProject: ReelProject | null;
@@ -57,7 +57,7 @@ export function serializeDirectorContext(
       locks: object.locks.map((lock) => compactText(lock)).slice(0, 20),
       summary: object.summary,
     })),
-    directionContract: input.contract ? {
+    directionBrief: input.contract ? {
       title: compactText(input.contract.title),
       objective: compactText(input.contract.objective, 1_000),
       inheritance: input.contract.inheritance.map(({ sourceTitle: _sourceTitle, ...item }) => ({
@@ -115,7 +115,7 @@ export function serializeDirectorContext(
       ...object,
       lockCount: locks.length,
     })),
-    directionContract: input.contract ? {
+    directionBrief: input.contract ? {
       title: compactText(input.contract.title),
       objective: compactText(input.contract.objective, 600),
       locks: input.contract.locks.slice(0, 10),

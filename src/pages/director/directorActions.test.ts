@@ -9,7 +9,7 @@ const summary: VisualSummary = {
 };
 
 const response = (canvasActions: DirectorResponse['canvasActions']): DirectorResponse => ({
-  message: 'Done.', mode: 'inherit', directionContract: null, sequence: null,
+  message: 'Done.', mode: 'inherit', directionBrief: null, sequence: null,
   continuity: null, canvasActions, reelActions: [], suggestedActions: [],
 });
 

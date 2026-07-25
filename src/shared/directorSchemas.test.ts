@@ -24,7 +24,7 @@ const emptySummary = {
 
 const emptyContext = {
   mode: 'combine', goal: '', exclusions: [], canvas: [], visibleSearch: null,
-  recentConversation: [], directionContract: null, sequence: null, reelProject: null,
+  recentConversation: [], directionBrief: null, sequence: null, reelProject: null,
 };
 
 describe('Director structured contracts', () => {
@@ -223,7 +223,7 @@ describe('Director structured contracts', () => {
 
   it('requires canonical dock modes and executable canvas actions', () => {
     const parsed = DirectorResponseSchema.parse({
-      message: 'I will place three matches.', mode: 'inherit', directionContract: null,
+      message: 'I will place three matches.', mode: 'inherit', directionBrief: null,
       sequence: null, continuity: null,
       canvasActions: [{
         type: 'search_and_add', query: 'warrior', count: 3, objectIds: [], objectId: null,
@@ -261,7 +261,7 @@ describe('Director structured contracts', () => {
   it('normalizes fractional provider confidence scores for percentage UI', () => {
     const parsed = DirectorResponseSchema.parse({
       message: 'Direction compiled.', mode: 'combine',
-      directionContract: {
+      directionBrief: {
         title: 'Gilded Frost', objective: 'Unify warmth and arctic scale.', inheritance: [],
         locks: [], exclusions: [], conflicts: [], coherence: 0.94,
       },
@@ -271,14 +271,14 @@ describe('Director structured contracts', () => {
       reelActions: [],
       suggestedActions: [],
     });
-    expect(parsed.directionContract?.coherence).toBe(94);
+    expect(parsed.directionBrief?.coherence).toBe(94);
     expect(parsed.continuity?.score).toBe(95.5);
   });
 
   it('accepts retired effect vocabulary at the action boundary for visible local resolution', () => {
     const parsed = DirectorResponseSchema.parse({
       message: 'Applied blur to the selected timeline clips.', mode: 'animate',
-      directionContract: null, sequence: null, continuity: null, canvasActions: [],
+      directionBrief: null, sequence: null, continuity: null, canvasActions: [],
       reelActions: [{
         type: 'style_clips', objectIds: [], clipIds: ['clip-1'], aspectRatio: null,
         fps: null, quality: null, effect: 'clean', visualEffect: 'blur', transition: 'soft-dissolve',
@@ -332,7 +332,7 @@ describe('Director structured contracts', () => {
     } as const;
     const response = {
       message: 'Set the project frame rate.', mode: 'animate',
-      directionContract: null, sequence: null, continuity: null, canvasActions: [],
+      directionBrief: null, sequence: null, continuity: null, canvasActions: [],
       reelActions: [{ ...baseAction, fps: 24 }], suggestedActions: [],
     };
 

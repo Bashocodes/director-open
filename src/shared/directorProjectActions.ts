@@ -137,7 +137,7 @@ function canvasResponse(
   return {
     message: '',
     mode: project.mode,
-    directionContract: null,
+    directionBrief: null,
     sequence: null,
     continuity: null,
     canvasActions: [action],

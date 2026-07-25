@@ -13,7 +13,7 @@ import '@xyflow/react/dist/style.css';
 import { Focus, Images, MousePointer2, ShieldCheck } from 'lucide-react';
 import type {
   ContinuityReport,
-  DirectionContract,
+  DirectionBrief,
   InheritanceChannel,
   StorySequence,
 } from '../../../shared/directorSchemas';
@@ -29,7 +29,7 @@ type Props = {
   mode: CanvasMode;
   goal: string;
   exclusions: string[];
-  contract: DirectionContract | null;
+  contract: DirectionBrief | null;
   sequence: StorySequence | null;
   continuity: ContinuityReport | null;
   onGoalChange: (goal: string) => void;

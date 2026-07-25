@@ -8,7 +8,7 @@ The agent plans and applies editing operations. The browser owns media, preview,
 
 ## Architecture
 
-1. **Direction board** — references, inheritance, Direction Contract, story, and continuity remain the source of creative intent.
+1. **Direction board** — references, inheritance, Direction brief, story, and continuity remain the source of creative intent.
 2. **Reel action protocol** — provider output is schema-validated into one of seven executable tools: open, add, remove, reorder, style, set project, or request render.
 3. **Deterministic action engine** — proposed actions are resolved only against current object and clip IDs, normalized, and applied to the browser project. The response artifact is replaced with sanitized `appliedActions`, so stale, unsupported, duplicate, and no-op requests are not represented as completed work.
 4. **Reel project** — the browser stores clip order, multi-selection, duration, color grade, visual effect, strength, transition, motion, caption, format, fps, quality, local media references, and music. Animate may open with no canvas references so local images can be added immediately.

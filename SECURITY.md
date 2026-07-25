@@ -13,14 +13,12 @@ development branch and the latest published release only.
 
 ## Report a vulnerability privately
 
-**Publication blocker:** replace `[PRIVATE SECURITY CONTACT]` with a monitored
-private email address or enable GitHub private vulnerability reporting before
-making this repository public.
+Use GitHub's **private vulnerability reporting** on this repository:
+open the **Security** tab and choose **Report a vulnerability**. The report
+stays private between you and the maintainers until a fix is published.
 
-Until that contact is configured, repository collaborators should report
-suspected vulnerabilities directly to the owner through an established
-private channel. Do not open a public issue, discussion, or pull request for a
-suspected vulnerability.
+Do not open a public issue, discussion, or pull request for a suspected
+vulnerability.
 
 Please include:
 
@@ -35,10 +33,9 @@ in the report. Use synthetic test data.
 
 ## Response expectations
 
-After a reporting contact has been configured, maintainers aim to acknowledge
-complete reports within five business days. Validation, remediation, and
-disclosure timing depend on severity and complexity. Reporters will be kept
-informed when practical.
+Maintainers aim to acknowledge complete reports within five business days.
+Validation, remediation, and disclosure timing depend on severity and
+complexity. Reporters will be kept informed when practical.
 
 Please allow maintainers a reasonable opportunity to investigate and release a
 fix before public disclosure.

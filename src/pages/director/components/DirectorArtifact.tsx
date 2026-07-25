@@ -5,18 +5,18 @@ import { describeReelActionReceipt } from '../reel/project';
 export function DirectorArtifact({ response }: { response: DirectorResponse }) {
   return (
     <div className="director-artifacts">
-      {response.directionContract && (
+      {response.directionBrief && (
         <article className="artifact-card">
-          <header><Sparkles size={13} /><span>DIRECTION CONTRACT</span><strong>{response.directionContract.coherence}%</strong></header>
-          <h4>{response.directionContract.title}</h4>
-          <p>{response.directionContract.objective}</p>
+          <header><Sparkles size={13} /><span>DIRECTION CONTRACT</span><strong>{response.directionBrief.coherence}%</strong></header>
+          <h4>{response.directionBrief.title}</h4>
+          <p>{response.directionBrief.objective}</p>
           <div className="artifact-chip-row">
-            {response.directionContract.locks.slice(0, 5).map((lock) => <span key={lock}><LockKeyhole size={9} /> {lock}</span>)}
+            {response.directionBrief.locks.slice(0, 5).map((lock) => <span key={lock}><LockKeyhole size={9} /> {lock}</span>)}
           </div>
-          {response.directionContract.conflicts[0] && (
+          {response.directionBrief.conflicts[0] && (
             <div className="conflict-resolution">
               <span><AlertTriangle size={10} /> Conflict resolved</span>
-              <p>{response.directionContract.conflicts[0].resolution}</p>
+              <p>{response.directionBrief.conflicts[0].resolution}</p>
             </div>
           )}
         </article>

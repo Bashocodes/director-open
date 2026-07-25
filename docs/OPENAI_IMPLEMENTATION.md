@@ -2,7 +2,7 @@
 
 ## Essential reasoning work
 
-The Director reasoning layer can map each source to explicit inheritance channels, reconcile conflicting visual signals, preserve locks and exclusions, compile a Direction Contract, plan a three-to-eight-beat sequence, and identify continuity drift.
+The Director reasoning layer can map each source to explicit inheritance channels, reconcile conflicting visual signals, preserve locks and exclusions, compile a Direction brief, plan a three-to-eight-beat sequence, and identify continuity drift.
 
 Every canvas mutation is represented by a bounded structured action. The browser applies selection, inheritance, removal, goal, and exclusion actions only against known object identifiers. The local library is user-owned and starts empty; providers cannot search a remote corpus, invent an image URL, or use an unknown object ID to mutate the board.
 

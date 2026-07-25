@@ -28,14 +28,15 @@ Difficulty estimates are intentionally coarse:
 
 ## Public-release blockers
 
-### Private vulnerability intake is not configured
+### Private vulnerability reporting must be switched on
 
-`SECURITY.md:16-18` still contains the explicit private-contact placeholder.
-Before public visibility, the owner must add a monitored private address or
-enable GitHub private vulnerability reporting.
+`SECURITY.md` now directs reporters to GitHub private vulnerability reporting
+and no longer carries a contact placeholder. The remaining step is a repository
+setting the owner must enable: **Settings → Advanced Security → Private
+vulnerability reporting**. Until it is on, the documented route does not exist
+and reporters have nowhere private to go.
 
-**Difficulty: Low** — this is an owner/configuration decision plus one
-documentation edit.
+**Difficulty: Low** — one owner toggle, no code change.
 
 ### The README hero is still a placeholder
 

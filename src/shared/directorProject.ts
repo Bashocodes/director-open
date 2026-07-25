@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {
   ContinuityReportSchema,
-  DirectionContractSchema,
+  DirectionBriefSchema,
   DirectorModelSchema,
   DirectorResponseSchema,
   InheritanceChannelSchema,
@@ -132,7 +132,7 @@ export const DirectorProjectFileSchema = z.object({
   mode: DirectorProjectCanvasModeSchema,
   goal: z.string().max(1_000),
   exclusions: z.array(z.string().max(160)).max(24),
-  contract: DirectionContractSchema.nullable(),
+  contract: DirectionBriefSchema.nullable(),
   sequence: StorySequenceSchema.nullable(),
   continuity: ContinuityReportSchema.nullable(),
   reelProject: DirectorProjectReelSchema.nullable(),
