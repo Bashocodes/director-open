@@ -38,14 +38,15 @@ and reporters have nowhere private to go.
 
 **Difficulty: Low** — one owner toggle, no code change.
 
-### The README hero is still a placeholder
+### The README hero is in place
 
-`README.md:5` calls for `docs/images/director-open-hero.png`, but no publication
-screenshot is present. The placeholder is acceptable for private QA, not for
-the intended public landing page.
+Resolved 2026-07-25. `docs/images/director-open-hero.png` shows the workspace
+with a bundled sample loaded, an effect applied and its generated controls
+visible. It contains only bundled sample media and no keys, account details, or
+private paths.
 
-**Difficulty: Low** — capture, review for private media or keys, optimize, and
-commit one screenshot.
+**Remaining nicety:** the shot is a 1456×839 window capture. A higher-density
+capture would read better on retina displays.
 
 ### Whole history is now legacy-name clean — but the remote is not
 
