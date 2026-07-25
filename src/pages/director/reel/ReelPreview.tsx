@@ -9,88 +9,21 @@ import type { TextLayer } from '../../../shared/directorSchemas';
 import { clampPlayhead, keyToPlayerAction } from './playerControls';
 import { useFullscreen } from './useFullscreen';
 import { TextLayerOverlay } from './TextLayerOverlay';
-import { renderTextLayer, resolveTextLayerAlpha } from '../../../lib/text/renderTextLayer';
 import { ensureTextFontsReady } from '../../../lib/text/loadFonts';
 import { renderTransitionFrame } from '../../../plugins/transitions/transitionKit';
 import { compositeClipBoundary } from './transitionBoundary';
 import { compileReelTimeline, reelDuration } from './project';
-import { reelGradeStack, reelVisualEffectStack, type ReelClip, type ReelProject } from './types';
+import { type ReelProject } from './types';
 import {
-  applyPreviewGradeFinish,
-  applyPreviewStructuralEffects,
-  applyPreviewVisualEffect,
-  previewGradeFilter,
-  type PixelSortPreviewMetrics,
-} from './previewEffects';
-import { cameraPoseAt } from './motionRecipes';
-import { isStructuralEffect, structuralEffectIds } from './structuralEffects';
+  composeClipFrame,
+  resizeCanvas,
+  type ClipFrameScratch,
+} from './clipFrameComposer';
 
 function previewDimensions(aspect: ReelProject['aspectRatio']) {
   if (aspect === '9:16') return { width: 540, height: 960 };
   if (aspect === '16:9') return { width: 960, height: 540 };
   return { width: 720, height: 720 };
-}
-function drawCover(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  width: number,
-  height: number,
-  clip: ReelClip,
-  progress: number,
-) {
-  const sourceRatio = image.naturalWidth / image.naturalHeight;
-  const targetRatio = width / height;
-  let drawWidth = width;
-  let drawHeight = height;
-  if (sourceRatio > targetRatio) drawWidth = height * sourceRatio;
-  else drawHeight = width / sourceRatio;
-
-  const pose = cameraPoseAt(clip.motion, progress, clip.pluginParams?.[clip.motion]);
-  const overflowX = Math.max(0, drawWidth * pose.zoom - width);
-  const overflowY = Math.max(0, drawHeight * pose.zoom - height);
-  context.drawImage(
-    image,
-    -overflowX * pose.focusX,
-    -overflowY * pose.focusY,
-    drawWidth * pose.zoom,
-    drawHeight * pose.zoom,
-  );
-}
-
-function drawCenteredCover(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  width: number,
-  height: number,
-) {
-  const sourceRatio = image.naturalWidth / image.naturalHeight;
-  const targetRatio = width / height;
-  const drawWidth = sourceRatio > targetRatio ? height * sourceRatio : width;
-  const drawHeight = sourceRatio > targetRatio ? height : width / sourceRatio;
-  context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
-}
-
-function drawCameraFrame(
-  context: CanvasRenderingContext2D,
-  source: HTMLCanvasElement,
-  width: number,
-  height: number,
-  clip: ReelClip,
-  progress: number,
-) {
-  const pose = cameraPoseAt(clip.motion, progress, clip.pluginParams?.[clip.motion]);
-  const drawWidth = width * pose.zoom;
-  const drawHeight = height * pose.zoom;
-  const overflowX = Math.max(0, drawWidth - width);
-  const overflowY = Math.max(0, drawHeight - height);
-  context.drawImage(source, -overflowX * pose.focusX, -overflowY * pose.focusY, drawWidth, drawHeight);
-}
-
-function resizeCanvas(canvas: HTMLCanvasElement, width: number, height: number) {
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
 }
 
 function formatTime(seconds: number) {
@@ -109,6 +42,8 @@ type ReelPreviewProps = {
   onSelectLayer?: (id: string | null) => void;
   onChangeLayer?: (layer: TextLayer) => void;
   onDeleteLayer?: (id: string) => void;
+  /** Reports the playhead so a still export can capture the exact frame on screen. */
+  onTimeChange?: (time: number) => void;
 };
 
 export function ReelPreview({
@@ -122,6 +57,7 @@ export function ReelPreview({
   onSelectLayer,
   onChangeLayer,
   onDeleteLayer,
+  onTimeChange,
 }: ReelPreviewProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -248,81 +184,24 @@ export function ReelPreview({
       resizeCanvas(clipCanvas, canvas.width, canvas.height);
       const clipContext = clipCanvas.getContext('2d');
       if (!clipContext) return;
-      clipContext.clearRect(0, 0, clipCanvas.width, clipCanvas.height);
-      const grades = reelGradeStack(clip);
-      const gradeFilters = grades
-        .map((effect) => previewGradeFilter(
-          effect,
-          clip.intensity,
-          clip.pluginParams?.[effect],
-        ))
-        .filter((value) => value !== 'none');
-      clipContext.filter = 'none';
-      const visualEffects = reelVisualEffectStack(clip);
-      const structuralEffects = structuralEffectIds(visualEffects);
-      let structuralEffectMetrics: PixelSortPreviewMetrics | undefined;
-      if (structuralEffects.length > 0) {
-        let pixelCanvas = pixelCanvasRef.current;
-        if (!pixelCanvas) {
-          pixelCanvas = document.createElement('canvas');
-          pixelCanvasRef.current = pixelCanvas;
-        }
-        resizeCanvas(pixelCanvas, clipCanvas.width, clipCanvas.height);
-        const pixelContext = pixelCanvas.getContext('2d');
-        if (!pixelContext) return;
-        pixelContext.clearRect(0, 0, pixelCanvas.width, pixelCanvas.height);
-        pixelContext.filter = 'none';
-        drawCenteredCover(pixelContext, image, pixelCanvas.width, pixelCanvas.height);
-        structuralEffectMetrics = applyPreviewStructuralEffects({
-          context: pixelContext,
-          clip,
-          effects: structuralEffects,
-          width: pixelCanvas.width,
-          height: pixelCanvas.height,
-          progress,
-          fps: project.fps,
-        });
-        drawCameraFrame(clipContext, pixelCanvas, clipCanvas.width, clipCanvas.height, clip, progress);
-      } else {
-        drawCover(clipContext, image, clipCanvas.width, clipCanvas.height, clip, progress);
-      }
-      visualEffects.filter((effect) => !isStructuralEffect(effect)).forEach((effect) => applyPreviewVisualEffect({
+      const scratch: ClipFrameScratch = {
+        pixel: pixelCanvasRef.current ?? undefined,
+        grade: gradeCanvasRef.current ?? undefined,
+      };
+      const structuralEffectMetrics = composeClipFrame({
         context: clipContext,
+        image,
         clip,
-        effect,
         width: clipCanvas.width,
         height: clipCanvas.height,
         progress,
+        localTime: local,
         fps: project.fps,
-      }));
-      if (gradeFilters.length > 0) {
-        let gradeCanvas = gradeCanvasRef.current;
-        if (!gradeCanvas) {
-          gradeCanvas = document.createElement('canvas');
-          gradeCanvasRef.current = gradeCanvas;
-        }
-        resizeCanvas(gradeCanvas, clipCanvas.width, clipCanvas.height);
-        const gradeContext = gradeCanvas.getContext('2d');
-        if (!gradeContext) return;
-        gradeContext.clearRect(0, 0, gradeCanvas.width, gradeCanvas.height);
-        gradeContext.filter = gradeFilters.join(' ');
-        gradeContext.drawImage(clipCanvas, 0, 0);
-        gradeContext.filter = 'none';
-        clipContext.clearRect(0, 0, clipCanvas.width, clipCanvas.height);
-        clipContext.drawImage(gradeCanvas, 0, 0);
-      }
-      grades.forEach((effect) => applyPreviewGradeFinish(
-        clipContext,
-        effect,
-        clip.intensity,
-        clipCanvas.width,
-        clipCanvas.height,
-      ));
-      clip.textLayers.forEach((layer) => {
-        const layerAlpha = resolveTextLayerAlpha(layer.timing, local);
-        if (layerAlpha <= 0) return;
-        renderTextLayer(clipContext, layer, { width: clipCanvas.width, height: clipCanvas.height, alpha: layerAlpha });
+        fidelity: 'player',
+        scratch,
       });
+      pixelCanvasRef.current = scratch.pixel ?? null;
+      gradeCanvasRef.current = scratch.grade ?? null;
 
       if (structuralEffectMetrics) {
         canvas.dataset.pixelSortPreviewMs = structuralEffectMetrics.sortMs.toFixed(2);
@@ -342,6 +221,10 @@ export function ReelPreview({
     });
     context.restore();
   }, [project, time, timeline, images, fontsReady]);
+
+  useEffect(() => {
+    onTimeChange?.(time);
+  }, [time, onTimeChange]);
 
   useEffect(() => {
     let active = true;

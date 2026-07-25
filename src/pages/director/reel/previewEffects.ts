@@ -96,9 +96,18 @@ export function applyPreviewStructuralEffects(options: {
   height: number;
   progress: number;
   fps: number;
+  /**
+   * Exports set this. The player downsamples structural effects to hold frame
+   * rate; an exported frame must be the full-resolution result, and must not
+   * read from or write to the player's per-canvas cache.
+   */
+  fullResolution?: boolean;
 }): PixelSortPreviewMetrics | undefined {
   const { context, clip, effects, width, height, progress, fps } = options;
   if (effects.length === 0) return undefined;
+  if (options.fullResolution) {
+    return applyStructuralEffectsAtFullResolution(options);
+  }
   const effectSeeds = Object.fromEntries(
     effects.map((effect) => [effect, effectSeed(`${clip.id}:${effect}`)]),
   );
@@ -185,6 +194,53 @@ export function applyPreviewStructuralEffects(options: {
     morphologyFrame: sample.frameIndex,
     phase: sample.phase,
     cacheHit,
+  };
+}
+
+/**
+ * Runs the structural-effect stack at the context's native resolution with no
+ * cache and no downscaling. Used by still export, where a person is looking at
+ * one frame and the speed/quality trade the player makes is the wrong one.
+ */
+function applyStructuralEffectsAtFullResolution(options: {
+  context: CanvasRenderingContext2D;
+  clip: ReelClip;
+  effects: readonly StructuralEffectId[];
+  width: number;
+  height: number;
+  progress: number;
+  fps: number;
+}): PixelSortPreviewMetrics | undefined {
+  const { context, clip, effects, width, height, progress, fps } = options;
+  const effectSeeds = Object.fromEntries(
+    effects.map((effect) => [effect, effectSeed(`${clip.id}:${effect}`)]),
+  );
+  const baseSeed = effectSeeds[effects[0]];
+  const sample = structuralEffectSampleAtProgress(progress, clip.duration, fps, baseSeed);
+  if (sample.phase <= 0.001) return undefined;
+  const frame = context.getImageData(0, 0, width, height);
+  const started = performance.now();
+  frame.data.set(renderStructuralEffectStackFrame(effects, frame.data, width, height, {
+    intensity: clip.intensity,
+    seed: sample.seed,
+    phase: sample.phase,
+    progress: sample.progress,
+    baseSeed,
+    frameIndex: sample.frameIndex,
+    frameCount: sample.frameCount,
+    effectSeeds,
+    pluginParams: clip.pluginParams,
+  }));
+  const sortMs = performance.now() - started;
+  context.putImageData(frame, 0, 0);
+  return {
+    sortMs,
+    workWidth: width,
+    workHeight: height,
+    scale: 1,
+    morphologyFrame: sample.frameIndex,
+    phase: sample.phase,
+    cacheHit: false,
   };
 }
 

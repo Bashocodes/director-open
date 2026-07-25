@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   Download,
+  Image as ImageIcon,
   ImagePlus,
   Info,
   LoaderCircle,
@@ -36,7 +37,8 @@ import {
   validateLocalAudio,
   validateLocalImage,
 } from './media';
-import { normalizeReelProject, reelDuration } from './project';
+import { compileReelTimeline, normalizeReelProject, reelDuration } from './project';
+import { StillExportPanel } from './StillExportPanel';
 import { ExportVerifyPanel } from './ExportVerifyPanel';
 import { ReelPreview } from './ReelPreview';
 import { PluginParamFields } from './PluginParamFields';
@@ -146,11 +148,31 @@ export function DirectorReelStudio({
   const [showQualityWarning, setShowQualityWarning] = useState(false);
   const [showRenderDetails, setShowRenderDetails] = useState(false);
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
+  const [showStillExport, setShowStillExport] = useState(false);
+  const [playheadTime, setPlayheadTime] = useState(0);
   const selectedClipIds = project.selectedClipIds.filter((id) => project.clips.some((clip) => clip.id === id));
   const selectedId = selectedClipIds[0];
   const selectedClip = project.clips.find((clip) => clip.id === selectedId) || null;
   const dimensions = reelDimensions(project.aspectRatio, project.quality);
   const duration = reelDuration(project);
+  // A still captures what is on screen, so the playhead — not the timeline
+  // selection — decides which clip and which moment gets exported.
+  const stillTarget = useMemo(() => {
+    if (!project.clips.length) return null;
+    const timeline = compileReelTimeline(project);
+    const index = timeline.clips.findIndex(
+      (entry, position) => playheadTime >= entry.start
+        && (playheadTime < entry.start + project.clips[position].duration
+          || position === project.clips.length - 1),
+    );
+    const resolved = index >= 0 ? index : 0;
+    const clip = project.clips[resolved];
+    const local = Math.max(0, playheadTime - timeline.clips[resolved].start);
+    return {
+      clip,
+      progress: clip.duration > 0 ? Math.min(1, local / clip.duration) : 0,
+    };
+  }, [project, playheadTime]);
   const rendering = ['loading', 'preparing', 'rendering', 'cancelling'].includes(renderState.stage);
   const heavyEffectsNeedQuality = hasHeavyVisualEffects(project)
     && (project.quality === 'draft' || project.quality === 'balanced');
@@ -511,6 +533,7 @@ export function DirectorReelStudio({
             onSelectLayer={setSelectedTextLayerId}
             onChangeLayer={updateTextLayer}
             onDeleteLayer={removeTextLayer}
+            onTimeChange={setPlayheadTime}
           />
         </div>
 
@@ -751,6 +774,34 @@ export function DirectorReelStudio({
             </div>
           </div>
         )}
+        <div className="still-export-anchor">
+          <button
+            type="button"
+            className="still-export-toggle"
+            aria-expanded={showStillExport}
+            disabled={!project.clips.length}
+            onClick={() => setShowStillExport((open) => !open)}
+          >
+            <ImageIcon size={14} /> Save image
+          </button>
+          {showStillExport && (
+            <>
+              <button
+                type="button"
+                className="render-detail-backdrop"
+                aria-label="Close still export"
+                onClick={() => setShowStillExport(false)}
+              />
+              <StillExportPanel
+                clip={stillTarget?.clip ?? null}
+                aspectRatio={project.aspectRatio}
+                fps={project.fps}
+                progress={stillTarget?.progress ?? 0}
+                onClose={() => setShowStillExport(false)}
+              />
+            </>
+          )}
+        </div>
         {renderState.outputUrl ? (
           <a className="render-button complete" href={renderState.outputUrl} download={`director-open-${new Date().toISOString().slice(0, 10)}.mp4`}><Download size={14} /> Download MP4</a>
         ) : rendering ? (
