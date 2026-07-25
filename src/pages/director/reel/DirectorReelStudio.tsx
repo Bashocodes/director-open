@@ -38,6 +38,7 @@ import {
   validateLocalImage,
 } from './media';
 import { compileReelTimeline, normalizeReelProject, reelDuration } from './project';
+import { estimateRender } from './renderEstimate';
 import { StillExportPanel } from './StillExportPanel';
 import { ExportVerifyPanel } from './ExportVerifyPanel';
 import { ReelPreview } from './ReelPreview';
@@ -174,6 +175,10 @@ export function DirectorReelStudio({
     };
   }, [project, playheadTime]);
   const rendering = ['loading', 'preparing', 'rendering', 'cancelling'].includes(renderState.stage);
+  const renderEstimate = useMemo(() => estimateRender(project, {
+    durationSeconds: duration,
+    hasStructuralPass: hasHeavyVisualEffects(project),
+  }), [project, duration]);
   const heavyEffectsNeedQuality = hasHeavyVisualEffects(project)
     && (project.quality === 'draft' || project.quality === 'balanced');
   const fingerprint = reelProjectFingerprint(project);
@@ -552,7 +557,20 @@ export function DirectorReelStudio({
                 { id: '24', label: '24 fps', description: 'Traditional film cadence.' },
                 { id: '30', label: '30 fps', description: 'Smoother motion.' },
               ]} onChange={(fps) => commitProject({ ...project, fps: Number(fps) as 24 | 30 })} />
-              <p className="quality-note">{REEL_QUALITIES.find((item) => item.id === project.quality)?.description} File size follows duration and image detail—not the source JPG size.</p>
+              <p className="quality-note">{REEL_QUALITIES.find((item) => item.id === project.quality)?.description}</p>
+              <p className={`quality-estimate${renderEstimate.oversized || renderEstimate.slow ? ' warn' : ''}`}>
+                <span>{dimensions.width}×{dimensions.height}</span>
+                <span>{renderEstimate.durationLabel} to render</span>
+                <span>{renderEstimate.bytesLabel}</span>
+              </p>
+              {(renderEstimate.oversized || renderEstimate.slow) && (
+                <p className="quality-estimate-note">
+                  {renderEstimate.oversized
+                    ? 'This file may be too large for social uploads. Balanced or High is usually the better post.'
+                    : 'This is a long wait on this device. Balanced renders the same edit far faster.'}
+                </p>
+              )}
+              <p className="quality-note subtle">Estimates only — the real cost depends on your device and effect stack. File size follows duration and image detail, not the source JPG size.</p>
             </div>
           </InspectorSection>
 
