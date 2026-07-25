@@ -24,6 +24,9 @@ vi.mock('./components/DirectorCanvas', () => ({
         imageUrl?: string;
         sourceFile?: File;
       }) => `${object.imageUrl || 'none'}:${object.sourceFile?.name || 'none'}`).join('|')}</div>
+      <div data-testid="canvas-positions">{props.objects.map((object: {
+        position: { x: number; y: number };
+      }) => `${object.position.x},${object.position.y}`).join('|')}</div>
       <button type="button" onClick={() => props.onUploadFiles([
         new File(['one'], 'Local One.png', { type: 'image/png' }),
         new File(['two'], 'Local Two.webp', { type: 'image/webp' }),
@@ -134,6 +137,7 @@ describe('DirectorPage canvas-aware chat', () => {
     render(<DirectorPage />);
     fireEvent.click(screen.getByText('Upload two images'));
     expect(screen.getByTestId('canvas-titles')).toHaveTextContent('Local One|Local Two');
+    expect(screen.getByTestId('canvas-positions')).toHaveTextContent('560,220|950,220');
   });
 
   it('exports strict project JSON without browser media URLs or provider keys and revokes the download URL', async () => {

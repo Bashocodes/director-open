@@ -11,6 +11,7 @@ const ffmpegHarness = vi.hoisted(() => ({
     deleted: string[];
     terminated: boolean;
     loadStarted: boolean;
+    loadConfig: Record<string, unknown> | null;
   }>,
   execCode: 0,
   detachWrites: false,
@@ -35,6 +36,7 @@ vi.mock('@ffmpeg/ffmpeg', () => ({
     deleted: string[] = [];
     terminated = false;
     loadStarted = false;
+    loadConfig: Record<string, unknown> | null = null;
     constructor() { ffmpegHarness.instances.push(this); }
     on(name: string, handler: (event: never) => void) {
       const handlers = this.handlers.get(name) || new Set();
@@ -42,8 +44,9 @@ vi.mock('@ffmpeg/ffmpeg', () => ({
       this.handlers.set(name, handlers);
     }
     off(name: string, handler: (event: never) => void) { this.handlers.get(name)?.delete(handler); }
-    async load() {
+    async load(config: Record<string, unknown>) {
       this.loadStarted = true;
+      this.loadConfig = config;
       if (ffmpegHarness.loadGate) await ffmpegHarness.loadGate.promise;
       return true;
     }
@@ -405,6 +408,11 @@ describe('FFmpeg reel command compiler', () => {
     expect(verification).toMatchObject({ verdict: 'fail' });
     expect(engine.deleted).toEqual(expect.arrayContaining(['image-0.jpg', 'director-open-reel.mp4']));
     expect(engine.terminated).toBe(true);
+    expect(engine.loadConfig).toMatchObject({
+      classWorkerURL: expect.stringContaining('worker'),
+      coreURL: 'blob:ffmpeg-core-1',
+      wasmURL: 'blob:ffmpeg-core-2',
+    });
     expect(revoke).toHaveBeenCalledTimes(2);
     revoke.mockRestore();
   });

@@ -1,4 +1,5 @@
 import type { FFmpeg } from '@ffmpeg/ffmpeg';
+import ffmpegClassWorkerUrl from '@ffmpeg/ffmpeg/worker?worker&url';
 import {
   verifyExport,
   type VerifyReport,
@@ -568,7 +569,13 @@ export class BrowserFfmpegRenderer {
           callbacks,
         );
       }
-      await ffmpeg.load(loadConfig);
+      await ffmpeg.load({
+        ...loadConfig,
+        // Vite pre-bundles @ffmpeg/ffmpeg. Without an explicit bundled Worker
+        // URL, the wrapper resolves ./worker.js beside the optimized dependency
+        // where no such file exists, leaving load() pending until our watchdog.
+        classWorkerURL: ffmpegClassWorkerUrl,
+      });
       if (signal.aborted || this.cancelled) throw new Error(timedOut
         ? 'The local render engine did not finish loading within 90 seconds. Check the connection and retry.'
         : 'Render cancelled.');
