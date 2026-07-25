@@ -39,6 +39,7 @@ import {
 } from './media';
 import { compileReelTimeline, normalizeReelProject, reelDuration } from './project';
 import { estimateRender } from './renderEstimate';
+import { loadSampleFiles, toFileList } from './sampleMedia';
 import { StillExportPanel } from './StillExportPanel';
 import { ExportVerifyPanel } from './ExportVerifyPanel';
 import { ReelPreview } from './ReelPreview';
@@ -150,6 +151,7 @@ export function DirectorReelStudio({
   const [showRenderDetails, setShowRenderDetails] = useState(false);
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
   const [showStillExport, setShowStillExport] = useState(false);
+  const [loadingSamples, setLoadingSamples] = useState(false);
   // The playhead moves every animation frame. Keeping it in a ref means
   // playback never re-renders the studio; the still exporter reads it only at
   // the moment it needs it.
@@ -344,6 +346,18 @@ export function DirectorReelStudio({
     const selected = selectedClipIds.filter((selectedClipId) => selectedClipId !== id);
     const fallback = clips[Math.min(indexOfClip(project.clips, id), Math.max(0, clips.length - 1))];
     commitProject({ ...project, clips, selectedClipIds: selected.length ? selected : fallback ? [fallback.id] : [] });
+  }
+
+  async function addSampleImages() {
+    if (loadingSamples) return;
+    setLoadingSamples(true);
+    try {
+      addLocalImages(toFileList(await loadSampleFiles()));
+    } catch (error) {
+      setMediaNotice(error instanceof Error ? error.message : 'Director could not load the samples.');
+    } finally {
+      setLoadingSamples(false);
+    }
   }
 
   function addLocalImages(files: FileList | null) {
@@ -738,7 +752,15 @@ export function DirectorReelStudio({
               </div>
             </article>
           ))}
-          {!project.clips.length && <div className="timeline-empty"><ImagePlus size={18} /> Add local images or return to the board and ask Director to place references.</div>}
+          {!project.clips.length && (
+            <div className="timeline-empty">
+              <ImagePlus size={18} />
+              <span>Add local images, or return to the board and ask Director to place references.</span>
+              <button type="button" className="timeline-empty-samples" disabled={loadingSamples} onClick={() => { void addSampleImages(); }}>
+                {loadingSamples ? 'Loading samples…' : 'Start with sample images'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
