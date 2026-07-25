@@ -3,9 +3,9 @@
 exports[`effect goldens > produces deterministic, stable fingerprints at 0.25/0.5/0.75 1`] = `
 {
   "anamorphic-streak": [
-    "4f375f89",
-    "4f375f89",
-    "4f375f89",
+    "dc00e16d",
+    "dc00e16d",
+    "dc00e16d",
   ],
   "chromatic-aberration": [
     "4d0010ef",

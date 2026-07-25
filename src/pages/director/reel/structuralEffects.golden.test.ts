@@ -33,7 +33,9 @@ const GOLDEN_FINGERPRINTS: Record<string, string> = {
   // Reviewed 2026-07-25. The changed-pixel counts are the check that matters
   // here: the two that rebuild the whole frame touch all 12288 pixels, while
   // the local effects touch only the region they claim to.
-  'anamorphic-streak': 'fnv1a=6d79fc0d;changed=3464',
+  // Re-reviewed 2026-07-25: restoration gain re-keyed to the normalized streak
+  // length so the flare no longer strengthens with frame resolution.
+  'anamorphic-streak': 'fnv1a=316396ae;changed=3676',
   'chromatic-aberration': 'fnv1a=90823b40;changed=5777',
   'tilt-shift': 'fnv1a=5c0fa0c1;changed=3397',
   'light-leak': 'fnv1a=6271d08c;changed=4446',

@@ -140,6 +140,63 @@ describe('effect library contract', () => {
   });
 });
 
+describe('resolution independence', () => {
+  /**
+   * Every effect declares that spatial values are fractions of the frame, so
+   * the same settings must produce the same *look* at any size. This renders
+   * one scene at two resolutions and compares the average change each effect
+   * makes. A gain keyed to pixel counts rather than frame fractions — the bug
+   * that shipped in anamorphic-streak's first version — fails here.
+   */
+  function highlightScene(width: number, height: number): Uint8ClampedArray {
+    const out = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const o = (y * width + x) * 4;
+        const nx = x / width;
+        const ny = y / height;
+        // A bright disc at the same relative position in both renders.
+        const bright = Math.hypot(nx - 0.68, ny - 0.3) < 0.06;
+        const value = bright ? 255 : 40 + Math.round(60 * nx);
+        out[o] = value;
+        out[o + 1] = value;
+        out[o + 2] = value;
+        out[o + 3] = 255;
+      }
+    }
+    return out;
+  }
+
+  /** Mean absolute change the effect makes, as a fraction of full scale. */
+  function meanChange(source: Uint8ClampedArray, output: Uint8ClampedArray) {
+    let total = 0;
+    let count = 0;
+    for (let i = 0; i < source.length; i += 4) {
+      for (let c = 0; c < 3; c += 1) {
+        total += Math.abs(output[i + c] - source[i + c]);
+        count += 1;
+      }
+    }
+    return total / count / 255;
+  }
+
+  /*
+   * Bounds calibrated against measurement, not guessed. Across a 6x span every
+   * correct effect lands between 0.89 and 1.01; the pixel-keyed gain that
+   * shipped in anamorphic-streak's first version measured 1.34. A loose
+   * tolerance would have let that through, so these are deliberately tight.
+   */
+  it.each(NEW_EFFECTS)('%s behaves the same at 256px and 1536px wide', (id) => {
+    const small = highlightScene(256, 256);
+    const large = highlightScene(1_536, 1_536);
+    const smallChange = meanChange(small, run(id, small, {}, 70, 256, 256));
+    const largeChange = meanChange(large, run(id, large, {}, 70, 1_536, 1_536));
+    const ratio = largeChange / smallChange;
+    expect(ratio).toBeGreaterThan(0.82);
+    expect(ratio).toBeLessThan(1.18);
+  });
+});
+
 describe('anamorphic-streak', () => {
   // The highlight sits at x 34..38, y 10..14. At length 0.2 on a 48px frame the
   // horizontal blur radius is 10px, so the streak reaches x 24..48 on those

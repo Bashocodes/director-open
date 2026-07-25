@@ -15,6 +15,12 @@ import { boxBlurRgb, highlightPass, screenBlend } from './effectKit';
  * Length is a fraction of frame width, so the streak covers the same portion
  * of the image at 540px preview and 4096px export.
  */
+/**
+ * The frame width the restoration gain is calibrated against. Any fixed value
+ * works; what matters is that it does not vary with the frame being rendered.
+ */
+const REFERENCE_WIDTH = 1_080;
+
 const ParamsSchema = z.object({
   intensity: z.number().min(0).max(100).default(60),
   length: z.number().min(0.01).max(0.4).default(0.12),
@@ -51,8 +57,11 @@ const anamorphicStreakPlugin = defineEffectPlugin({
     const streak = boxBlurRgb(highlights, width, height, radiusX, 1);
 
     // A horizontal box blur divides energy across its window, so a long streak
-    // would fade to nothing. Restore it to a readable level.
-    const restore = Math.sqrt(radiusX);
+    // would fade to nothing. Restore it to a readable level — but derive the
+    // amount from the NORMALIZED length, never the pixel radius. Keying it to
+    // pixels made the flare strengthen with resolution, so the same settings
+    // read differently in a 540px preview and a 4096px export.
+    const restore = Math.sqrt(Math.max(1, params.length * REFERENCE_WIDTH));
     const tint = params.tint / 100;
     const pixels = width * height;
     for (let p = 0; p < pixels; p += 1) {
