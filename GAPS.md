@@ -145,14 +145,21 @@ dashboard, selective media eviction, or archive manager.
 **Difficulty: High** — this needs a versioned multi-record store, quota-aware
 UX, migrations, and deletion tests.
 
-### Editing has no undo/redo transaction history
+### Undo/redo covers the reel, not the board
 
-Actions are validated and applied transactionally, and history snapshots can
-restore earlier project summaries, but there is no bounded command-level
-undo/redo stack for manual or AI-applied changes.
+Resolved for reel editing 2026-07-25: a bounded 60-step undo/redo stack records
+every reel project change — manual, sample import, or AI-applied — with
+⌘Z / ⇧⌘Z and toolbar controls. Rapid edits of the same field on the same clips
+coalesce into one step, so a slider drag undoes as one gesture. Snapshots hold
+project objects by reference, so restoring a removed clip restores a live
+object URL rather than a revoked one.
 
-**Difficulty: Medium** — define reversible commands around the shared action
-boundary and cover media lifecycle, selection, and compound edits.
+**Still open:** the direction board's own state (canvas objects, inheritance
+channels, exclusions) is not covered by the same stack, and history does not
+survive a page reload.
+
+**Difficulty: Medium** — extend the same history module to the board's state
+and decide whether an undo stack should be persisted at all.
 
 ### The editor is still-image-and-music focused
 

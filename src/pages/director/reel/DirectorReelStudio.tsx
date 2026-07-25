@@ -11,10 +11,12 @@ import {
   Info,
   LoaderCircle,
   Music,
+  Redo2,
   Scissors,
   ShieldCheck,
   Sparkles,
   Trash2,
+  Undo2,
   X,
 } from 'lucide-react';
 import {
@@ -38,6 +40,15 @@ import {
   validateLocalImage,
 } from './media';
 import { compileReelTimeline, normalizeReelProject, reelDuration } from './project';
+import {
+  canRedo,
+  canUndo,
+  clipEditLabel,
+  createHistory,
+  pushHistory,
+  redoHistory,
+  undoHistory,
+} from './projectHistory';
 import { estimateRender } from './renderEstimate';
 import { loadSampleFiles, toFileList } from './sampleMedia';
 import { StillExportPanel } from './StillExportPanel';
@@ -152,6 +163,11 @@ export function DirectorReelStudio({
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
   const [showStillExport, setShowStillExport] = useState(false);
   const [loadingSamples, setLoadingSamples] = useState(false);
+  const [history, setHistory] = useState(() => createHistory(project, Date.now()));
+  const pendingLabelRef = useRef<string | null>(null);
+  // Set while applying an undo/redo, so the resulting prop change is not
+  // recorded as a fresh edit.
+  const travellingRef = useRef(false);
   // The playhead moves every animation frame. Keeping it in a ref means
   // playback never re-renders the studio; the still exporter reads it only at
   // the moment it needs it.
@@ -243,7 +259,10 @@ export function DirectorReelStudio({
     }
   }, [selectedClip, selectedTextLayerId]);
 
-  function commitProject(next: ReelProject) {
+  function commitProject(next: ReelProject, label?: string) {
+    // The history effect reads this to decide whether this edit continues the
+    // previous gesture or starts a new undo step.
+    pendingLabelRef.current = label ?? null;
     onChange(normalizeReelProject({ ...next, renderRequested: false }));
   }
 
@@ -256,7 +275,8 @@ export function DirectorReelStudio({
           ? { ...clip, ...patch }
           : clip
       )),
-    });
+    // Dragging one slider is one undo step, not one per animation frame.
+    }, clipEditLabel([...targets], Object.keys(patch)));
   }
 
   function updatePluginParam(
@@ -347,6 +367,49 @@ export function DirectorReelStudio({
     const fallback = clips[Math.min(indexOfClip(project.clips, id), Math.max(0, clips.length - 1))];
     commitProject({ ...project, clips, selectedClipIds: selected.length ? selected : fallback ? [fallback.id] : [] });
   }
+
+  // Record every project change — manual, sample import, or AI-applied — so
+  // anything that alters the reel can be taken back.
+  useEffect(() => {
+    if (travellingRef.current) {
+      travellingRef.current = false;
+      return;
+    }
+    const label = pendingLabelRef.current;
+    pendingLabelRef.current = null;
+    setHistory((current) => pushHistory(current, project, { label, at: Date.now() }));
+  }, [project]);
+
+  function travelTo(next: typeof history) {
+    if (next === history) return;
+    travellingRef.current = true;
+    setHistory(next);
+    onChange(next.present.project);
+  }
+
+  function undoEdit() {
+    travelTo(undoHistory(history));
+  }
+
+  function redoEdit() {
+    travelTo(redoHistory(history));
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+      const target = event.target as HTMLElement | null;
+      // Never steal undo from a field the person is typing in.
+      if (target?.isContentEditable
+        || target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement) return;
+      event.preventDefault();
+      if (event.shiftKey) redoEdit();
+      else undoEdit();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
 
   async function addSampleImages() {
     if (loadingSamples) return;
@@ -722,6 +785,22 @@ export function DirectorReelStudio({
           <span><Scissors size={12} /> TIMELINE · {project.clips.length} clips · {duration.toFixed(1)} s · {selectedClipIds.length} selected</span>
           {onUseCanvasSelection && <button type="button" className="canvas-selection-button" onClick={onUseCanvasSelection} title="Replace the timeline with the currently selected canvas image(s)"><ImagePlus size={12} /> Use selected canvas ({canvasSelectionCount})</button>}
           {project.clips.length > 1 && <button type="button" onClick={() => onChange({ ...project, selectedClipIds: project.clips.map((clip) => clip.id) })}>Select all</button>}
+          <div className="timeline-history">
+            <button
+              type="button"
+              onClick={undoEdit}
+              disabled={!canUndo(history)}
+              title="Undo (⌘Z)"
+              aria-label="Undo"
+            ><Undo2 size={13} /> Undo</button>
+            <button
+              type="button"
+              onClick={redoEdit}
+              disabled={!canRedo(history)}
+              title="Redo (⇧⌘Z)"
+              aria-label="Redo"
+            ><Redo2 size={13} /> Redo</button>
+          </div>
           <label className="media-picker" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') event.currentTarget.querySelector('input')?.click(); }}><ImagePlus size={13} /> Add local images<input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple onChange={(event) => { addLocalImages(event.target.files); event.target.value = ''; }} /></label>
           <label className="media-picker" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') event.currentTarget.querySelector('input')?.click(); }}><Music size={13} /> {project.audio?.name || 'Add local music'}<input type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/flac,audio/ogg,audio/webm,.mp3,.m4a,.aac,.wav,.flac,.ogg,.webm" onChange={(event) => { setAudio(event.target.files?.[0]); event.target.value = ''; }} /></label>
           {project.audio && <button type="button" onClick={() => commitProject({ ...project, audio: null })}><X size={12} /> Remove music</button>}

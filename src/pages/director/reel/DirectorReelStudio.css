@@ -103,6 +103,9 @@
 .timeline-clip:hover .timeline-clip-actions, .timeline-clip.selected .timeline-clip-actions, .timeline-clip:focus-within .timeline-clip-actions { opacity: 1; }
 .timeline-clip-actions button { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; background: rgba(7,7,10,.86); color: var(--director-text-2); cursor: pointer; }
 .timeline-clip-actions button:disabled { opacity: .25; }
+.timeline-history { display: inline-flex; gap: 5px; }
+.timeline-history button { display: inline-flex; align-items: center; gap: 5px; }
+.timeline-history button:disabled { opacity: .38; cursor: not-allowed; }
 .timeline-empty { width: 100%; display: grid; place-items: center; align-content: center; gap: 8px; color: var(--director-text-3); font-size: 12px; text-align: center; }
 .timeline-empty-samples { min-height: 30px; padding: 0 14px; border: 1px solid rgba(142,171,200,.5); border-radius: 999px; background: rgba(142,171,200,.16); color: var(--director-blue-bright); font: 600 12px/1 Inter, system-ui, sans-serif; cursor: pointer; }
 .timeline-empty-samples:hover:not(:disabled) { background: rgba(142,171,200,.26); }
