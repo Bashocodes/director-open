@@ -47,7 +47,17 @@ function runEffect(plugin: AnyEffectPlugin, progress: number, frameIndex: number
   });
 }
 
-const EFFECT_IDS = ['film-grain', 'halation-bloom', 'vignette-breathe'];
+const EFFECT_IDS = [
+  'film-grain',
+  'halation-bloom',
+  'vignette-breathe',
+  'anamorphic-streak',
+  'chromatic-aberration',
+  'tilt-shift',
+  'light-leak',
+  'neon-edge',
+  'halftone-print',
+];
 
 describe('effect goldens', () => {
   it('produces deterministic, stable fingerprints at 0.25/0.5/0.75', () => {

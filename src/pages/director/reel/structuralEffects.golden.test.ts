@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   renderStructuralEffectFrame,
   STRUCTURAL_EFFECT_IDS,
-  type StructuralEffectId,
 } from './structuralEffects';
 
 const WIDTH = 96;
@@ -31,6 +30,15 @@ const GOLDEN_FINGERPRINTS: Record<string, string> = {
   'film-grain': 'fnv1a=c88376a1;changed=12092',
   'halation-bloom': 'fnv1a=99330647;changed=2753',
   'vignette-breathe': 'fnv1a=cd7005b3;changed=4574',
+  // Reviewed 2026-07-25. The changed-pixel counts are the check that matters
+  // here: the two that rebuild the whole frame touch all 12288 pixels, while
+  // the local effects touch only the region they claim to.
+  'anamorphic-streak': 'fnv1a=6d79fc0d;changed=3464',
+  'chromatic-aberration': 'fnv1a=90823b40;changed=5777',
+  'tilt-shift': 'fnv1a=5c0fa0c1;changed=3397',
+  'light-leak': 'fnv1a=6271d08c;changed=4446',
+  'neon-edge': 'fnv1a=b9a631a3;changed=12288',
+  'halftone-print': 'fnv1a=55682556;changed=12288',
 };
 
 function fixtureFrame() {

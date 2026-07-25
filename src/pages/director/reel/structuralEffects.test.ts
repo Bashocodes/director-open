@@ -35,6 +35,12 @@ describe('structural effect registry', () => {
       'film-grain',
       'halation-bloom',
       'vignette-breathe',
+      'anamorphic-streak',
+      'chromatic-aberration',
+      'tilt-shift',
+      'light-leak',
+      'neon-edge',
+      'halftone-print',
     ]);
     expect(isStructuralEffect('pixel-sort')).toBe(true);
     expect(isStructuralEffect('glow')).toBe(false);

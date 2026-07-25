@@ -2,6 +2,16 @@
 
 exports[`effect goldens > produces deterministic, stable fingerprints at 0.25/0.5/0.75 1`] = `
 {
+  "anamorphic-streak": [
+    "4f375f89",
+    "4f375f89",
+    "4f375f89",
+  ],
+  "chromatic-aberration": [
+    "4d0010ef",
+    "4d0010ef",
+    "4d0010ef",
+  ],
   "film-grain": [
     "1c4f289c",
     "b995d56e",
@@ -11,6 +21,26 @@ exports[`effect goldens > produces deterministic, stable fingerprints at 0.25/0.
     "ba40f686",
     "ba40f686",
     "ba40f686",
+  ],
+  "halftone-print": [
+    "94f4c8c0",
+    "94f4c8c0",
+    "94f4c8c0",
+  ],
+  "light-leak": [
+    "269bf98e",
+    "269bf98e",
+    "269bf98e",
+  ],
+  "neon-edge": [
+    "55c306b5",
+    "55c306b5",
+    "55c306b5",
+  ],
+  "tilt-shift": [
+    "3797704c",
+    "3797704c",
+    "3797704c",
   ],
   "vignette-breathe": [
     "8ef09962",
