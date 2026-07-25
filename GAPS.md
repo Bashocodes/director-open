@@ -47,17 +47,18 @@ the intended public landing page.
 **Difficulty: Low** — capture, review for private media or keys, optimize, and
 commit one screenshot.
 
-### The current tree is legacy-name clean, but the initial commit is not
+### Whole history is now legacy-name clean — but the remote is not
 
-The working tree scan has no legacy product-name matches. The repository's sole
-committed extraction snapshot still contains four legacy-name strings: two
-excluded-file references, one removed-logo filename, and one retired enum
-value. That fails the previously stated whole-history publication standard.
-History rewriting is deliberately not performed by this QA documentation pass.
+Resolved 2026-07-25 with owner authorization. The extraction snapshot carried
+two legacy-name strings (a removed-logo filename in `EXTRACTION_REPORT.md` and
+a retired enum value in `src/shared/directorSchemas.ts`); both were rewritten
+through history to match what the current tree already said. A scan of every
+reachable commit now returns no matches, and `pnpm verify` is green afterwards.
 
-**Difficulty: Low technically, Medium operationally** — amend/recreate the
-single private commit only with explicit owner authorization, then repeat the
-tree, history, and secret scans before any push.
+**Remaining owner action:** history was rewritten, so local `main` has diverged
+from `origin/main`, which still holds the old commits. Publishing requires a
+force push, and until that happens the remote copy is the unclean one. A
+pre-rewrite bundle backup was taken before the operation.
 
 ## QA and compatibility gaps
 
