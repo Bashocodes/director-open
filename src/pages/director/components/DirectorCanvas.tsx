@@ -18,6 +18,7 @@ import type {
   StorySequence,
 } from '../../../shared/directorSchemas';
 import type { CanvasMode, CanvasObject } from '../types';
+import { loadSampleFiles } from '../reel/sampleMedia';
 import { DirectorDock } from './DirectorDock';
 import { DirectorNode, type DirectorFlowNode } from './DirectorNode';
 
@@ -44,6 +45,8 @@ type Props = {
 };
 
 export function DirectorCanvas(props: Props) {
+  const [loadingSamples, setLoadingSamples] = useState(false);
+  const [sampleError, setSampleError] = useState('');
   const flowRef = useRef<ReactFlowInstance<DirectorFlowNode, Edge> | null>(null);
   const mountedRef = useRef(true);
   const knownObjectIdsRef = useRef<Set<string>>(new Set());
@@ -203,7 +206,22 @@ export function DirectorCanvas(props: Props) {
           <span>01 · DIRECTION</span>
           <h2>Build the visual language.</h2>
           <p>Add your own images, then choose what the direction inherits from each.</p>
-          <button type="button" onClick={props.onOpenLibrary}><Images size={15} /> Open media library</button>
+          <div className="canvas-empty-actions">
+            <button type="button" onClick={props.onOpenLibrary}><Images size={15} /> Open media library</button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={loadingSamples}
+              onClick={() => {
+                setLoadingSamples(true);
+                void loadSampleFiles()
+                  .then((files) => props.onUploadFiles(files))
+                  .catch(() => setSampleError('Director could not load the sample images.'))
+                  .finally(() => setLoadingSamples(false));
+              }}
+            >{loadingSamples ? 'Loading…' : 'Try sample images'}</button>
+          </div>
+          {sampleError && <p className="canvas-empty-error" role="alert">{sampleError}</p>}
         </div>
       )}
       <ReactFlow
