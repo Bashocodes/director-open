@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDown,
   ArrowLeft,
@@ -150,30 +150,35 @@ export function DirectorReelStudio({
   const [showRenderDetails, setShowRenderDetails] = useState(false);
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
   const [showStillExport, setShowStillExport] = useState(false);
-  const [playheadTime, setPlayheadTime] = useState(0);
+  // The playhead moves every animation frame. Keeping it in a ref means
+  // playback never re-renders the studio; the still exporter reads it only at
+  // the moment it needs it.
+  const playheadRef = useRef(0);
   const selectedClipIds = project.selectedClipIds.filter((id) => project.clips.some((clip) => clip.id === id));
   const selectedId = selectedClipIds[0];
   const selectedClip = project.clips.find((clip) => clip.id === selectedId) || null;
   const dimensions = reelDimensions(project.aspectRatio, project.quality);
   const duration = reelDuration(project);
   // A still captures what is on screen, so the playhead — not the timeline
-  // selection — decides which clip and which moment gets exported.
-  const stillTarget = useMemo(() => {
+  // selection — decides which clip and which moment gets exported. Resolved on
+  // demand so a moving playhead costs nothing.
+  const resolveStillTarget = useCallback(() => {
     if (!project.clips.length) return null;
+    const time = playheadRef.current;
     const timeline = compileReelTimeline(project);
     const index = timeline.clips.findIndex(
-      (entry, position) => playheadTime >= entry.start
-        && (playheadTime < entry.start + project.clips[position].duration
+      (entry, position) => time >= entry.start
+        && (time < entry.start + project.clips[position].duration
           || position === project.clips.length - 1),
     );
     const resolved = index >= 0 ? index : 0;
     const clip = project.clips[resolved];
-    const local = Math.max(0, playheadTime - timeline.clips[resolved].start);
+    const local = Math.max(0, time - timeline.clips[resolved].start);
     return {
       clip,
       progress: clip.duration > 0 ? Math.min(1, local / clip.duration) : 0,
     };
-  }, [project, playheadTime]);
+  }, [project]);
   const rendering = ['loading', 'preparing', 'rendering', 'cancelling'].includes(renderState.stage);
   const renderEstimate = useMemo(() => estimateRender(project, {
     durationSeconds: duration,
@@ -538,7 +543,7 @@ export function DirectorReelStudio({
             onSelectLayer={setSelectedTextLayerId}
             onChangeLayer={updateTextLayer}
             onDeleteLayer={removeTextLayer}
-            onTimeChange={setPlayheadTime}
+            onTimeChange={(time) => { playheadRef.current = time; }}
           />
         </div>
 
@@ -811,10 +816,9 @@ export function DirectorReelStudio({
                 onClick={() => setShowStillExport(false)}
               />
               <StillExportPanel
-                clip={stillTarget?.clip ?? null}
+                resolveTarget={resolveStillTarget}
                 aspectRatio={project.aspectRatio}
                 fps={project.fps}
-                progress={stillTarget?.progress ?? 0}
                 onClose={() => setShowStillExport(false)}
               />
             </>

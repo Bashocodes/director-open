@@ -20,12 +20,17 @@ import type { ReelClip } from './types';
  * about frame rate.
  */
 
+type StillExportTarget = { clip: ReelClip; progress: number };
+
 type StillExportPanelProps = {
-  clip: ReelClip | null;
+  /**
+   * Reads the clip and moment under the playhead. Called on open and again at
+   * export time, so a still always matches the frame on screen without the
+   * playhead re-rendering the studio while the reel plays.
+   */
+  resolveTarget: () => StillExportTarget | null;
   aspectRatio: ReelAspectRatio;
   fps: number;
-  /** Position inside the clip, 0..1, taken from the player. */
-  progress: number;
   onClose: () => void;
 };
 
@@ -58,12 +63,16 @@ function formatBytes(bytes: number) {
   return `${bytes} B`;
 }
 
-export function StillExportPanel({ clip, aspectRatio, fps, progress, onClose }: StillExportPanelProps) {
+export function StillExportPanel({ resolveTarget, aspectRatio, fps, onClose }: StillExportPanelProps) {
   const [sizeId, setSizeId] = useState<StillSizeId>('source');
   const [format, setFormat] = useState<StillFormat>('png');
   const [state, setState] = useState<PanelState>({ stage: 'idle' });
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null);
   const urlRef = useRef<string | null>(null);
+  // Snapshot on open so the panel can describe its subject; export re-reads the
+  // playhead so a scrub made while the panel is open is still honoured.
+  const [openedTarget] = useState<StillExportTarget | null>(() => resolveTarget());
+  const clip = openedTarget?.clip ?? null;
 
   const size = STILL_SIZES.find((entry) => entry.id === sizeId) ?? STILL_SIZES[0];
   const formatEntry = STILL_FORMATS.find((entry) => entry.id === format) ?? STILL_FORMATS[0];
@@ -81,7 +90,7 @@ export function StillExportPanel({ clip, aspectRatio, fps, progress, onClose }: 
       urlRef.current = null;
       return { stage: 'idle' };
     });
-  }, [sizeId, format, clip?.id, progress, aspectRatio]);
+  }, [sizeId, format, clip?.id, aspectRatio]);
 
   useEffect(() => {
     let active = true;
@@ -108,18 +117,20 @@ export function StillExportPanel({ clip, aspectRatio, fps, progress, onClose }: 
   }, [aspectRatio, size, sourceSize]);
 
   async function exportStill() {
-    if (!clip) return;
+    // Re-read the playhead: the frame on screen right now is the one to save.
+    const target = resolveTarget() ?? openedTarget;
+    if (!target) return;
     setState({ stage: 'working' });
     try {
-      const image = await loadImage(clip.imageUrl);
+      const image = await loadImage(target.clip.imageUrl);
       const result = await renderStill({
         image,
-        clip,
+        clip: target.clip,
         aspectRatio,
         fps,
         size,
         format,
-        progress,
+        progress: target.progress,
         sourceWidth: image.naturalWidth,
         sourceHeight: image.naturalHeight,
       });
@@ -129,7 +140,7 @@ export function StillExportPanel({ clip, aspectRatio, fps, progress, onClose }: 
       setState({
         stage: 'ready',
         url,
-        fileName: stillFileName(clip.title, formatEntry.extension),
+        fileName: stillFileName(target.clip.title, formatEntry.extension),
         bytes: result.blob.size,
         width: result.width,
         height: result.height,
