@@ -4,7 +4,7 @@
 
 ![The Director Open workspace: a reel preview on the left with an anamorphic-streak
 effect applied, the plugin's generated parameter controls on the right, and the
-timeline, undo controls and local render bar below.](docs/images/director-open-hero.png)
+timeline, undo controls and local render bar below.](docs/images/director-open-hero.jpg)
 
 Director Open is a browser-based visual direction and reel editor. Bring your own images and audio, shape a structured story on the canvas, edit the reel manually or with an optional AI provider, and render and inspect the MP4 on your device.
 

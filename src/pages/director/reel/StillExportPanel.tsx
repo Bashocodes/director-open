@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Download, Image as ImageIcon, LoaderCircle, X } from 'lucide-react';
 import type { ReelAspectRatio } from '../../../shared/directorSchemas';
 import {
+  effectPhaseAt,
+  peakEffectProgress,
   renderStill,
   stillDimensions,
   stillFileName,
@@ -72,7 +74,15 @@ export function StillExportPanel({ resolveTarget, aspectRatio, fps, onClose }: S
   // Snapshot on open so the panel can describe its subject; export re-reads the
   // playhead so a scrub made while the panel is open is still honoured.
   const [openedTarget] = useState<StillExportTarget | null>(() => resolveTarget());
+  // Overrides the playhead when someone chooses to capture the effect peak.
+  const [progressOverride, setProgressOverride] = useState<number | null>(null);
   const clip = openedTarget?.clip ?? null;
+
+  const captureProgress = progressOverride ?? openedTarget?.progress ?? 0;
+  // Effects fade to nothing at a clip's edges so reels loop cleanly. Capturing
+  // there would silently drop them, which reads as a broken export.
+  const phase = clip ? effectPhaseAt(clip, captureProgress, fps) : null;
+  const effectsAreDormant = phase !== null && phase < 0.05;
 
   const size = STILL_SIZES.find((entry) => entry.id === sizeId) ?? STILL_SIZES[0];
   const formatEntry = STILL_FORMATS.find((entry) => entry.id === format) ?? STILL_FORMATS[0];
@@ -90,7 +100,7 @@ export function StillExportPanel({ resolveTarget, aspectRatio, fps, onClose }: S
       urlRef.current = null;
       return { stage: 'idle' };
     });
-  }, [sizeId, format, clip?.id, aspectRatio]);
+  }, [sizeId, format, clip?.id, aspectRatio, progressOverride]);
 
   useEffect(() => {
     let active = true;
@@ -117,7 +127,8 @@ export function StillExportPanel({ resolveTarget, aspectRatio, fps, onClose }: S
   }, [aspectRatio, size, sourceSize]);
 
   async function exportStill() {
-    // Re-read the playhead: the frame on screen right now is the one to save.
+    // Re-read the playhead: the frame on screen right now is the one to save,
+    // unless the person explicitly chose to capture the effect peak instead.
     const target = resolveTarget() ?? openedTarget;
     if (!target) return;
     setState({ stage: 'working' });
@@ -130,7 +141,7 @@ export function StillExportPanel({ resolveTarget, aspectRatio, fps, onClose }: S
         fps,
         size,
         format,
-        progress: target.progress,
+        progress: progressOverride ?? target.progress,
         sourceWidth: image.naturalWidth,
         sourceHeight: image.naturalHeight,
       });
@@ -191,7 +202,33 @@ export function StillExportPanel({ resolveTarget, aspectRatio, fps, onClose }: S
           <p className="still-export-hint">{formatEntry.description}</p>
 
           {predicted && (
-            <p className="still-export-dimensions">{predicted.width}×{predicted.height} px</p>
+            <p className="still-export-dimensions">
+              {predicted.width}×{predicted.height} px
+              <span> · at {(captureProgress * clip.duration).toFixed(1)}s</span>
+            </p>
+          )}
+
+          {effectsAreDormant && (
+            <div className="still-export-warn" role="status">
+              <p>
+                This clip&rsquo;s effects fade out at its edges so the reel loops
+                cleanly, so they are not visible at this moment.
+              </p>
+              <button
+                type="button"
+                onClick={() => setProgressOverride(peakEffectProgress(clip, fps))}
+              >Capture where effects peak</button>
+            </div>
+          )}
+
+          {progressOverride !== null && (
+            <p className="still-export-hint">
+              Capturing the effect peak rather than the playhead.
+              {' '}
+              <button type="button" className="linklike" onClick={() => setProgressOverride(null)}>
+                Use the playhead instead
+              </button>
+            </p>
           )}
 
           {state.stage === 'error' && (

@@ -1,10 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import {
+  effectPhaseAt,
+  peakEffectProgress,
   stillDimensions,
   stillFileName,
   STILL_FORMATS,
   STILL_SIZES,
 } from './stillExport';
+import type { ReelClip } from './types';
+
+function clip(overrides: Partial<ReelClip> = {}): ReelClip {
+  return {
+    id: 'clip-1',
+    objectId: null,
+    title: 'Test clip',
+    imageUrl: 'blob:test',
+    duration: 3.2,
+    effect: 'clean',
+    visualEffect: 'none',
+    transition: 'cut',
+    transitionDuration: 0,
+    motion: 'push-in',
+    intensity: 60,
+    textLayers: [],
+    ...overrides,
+  };
+}
 
 const size = (id: string) => {
   const entry = STILL_SIZES.find((candidate) => candidate.id === id);
@@ -103,6 +124,37 @@ describe('stillFileName', () => {
     const name = stillFileName('x'.repeat(400), 'webp');
     expect(name.length).toBeLessThanOrEqual(65);
     expect(name.endsWith('.webp')).toBe(true);
+  });
+});
+
+describe('effect phase', () => {
+  const withEffect = clip({ visualEffect: 'halftone-print', visualEffectStack: ['halftone-print'] });
+
+  it('reports nothing for a clip with no visual effect', () => {
+    expect(effectPhaseAt(clip(), 0.5, 30)).toBeNull();
+  });
+
+  it('is dormant at the very start and end of a clip', () => {
+    // This is why the panel warns: a still captured here would lose the effect.
+    expect(effectPhaseAt(withEffect, 0, 30)!).toBeLessThan(0.05);
+    expect(effectPhaseAt(withEffect, 1, 30)!).toBeLessThan(0.05);
+  });
+
+  it('is at full strength somewhere in the middle', () => {
+    expect(effectPhaseAt(withEffect, 0.5, 30)!).toBeGreaterThan(0.9);
+  });
+
+  it('finds a peak where the effect is actually active', () => {
+    const peak = peakEffectProgress(withEffect, 30);
+    expect(peak).toBeGreaterThan(0);
+    expect(peak).toBeLessThan(1);
+    expect(effectPhaseAt(withEffect, peak, 30)!).toBeGreaterThan(0.9);
+  });
+
+  it('returns a usable progress even for a clip with no effect', () => {
+    const peak = peakEffectProgress(clip(), 30);
+    expect(peak).toBeGreaterThanOrEqual(0);
+    expect(peak).toBeLessThanOrEqual(1);
   });
 });
 

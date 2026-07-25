@@ -47,6 +47,7 @@ import {
   createHistory,
   pushHistory,
   redoHistory,
+  rehydrateProjectMedia,
   undoHistory,
 } from './projectHistory';
 import { estimateRender } from './renderEstimate';
@@ -168,6 +169,8 @@ export function DirectorReelStudio({
   // Set while applying an undo/redo, so the resulting prop change is not
   // recorded as a fresh edit.
   const travellingRef = useRef(false);
+  /** One reusable object URL per File, so travelling cannot accumulate handles. */
+  const travelUrlsRef = useRef(new Map<File, string>());
   // The playhead moves every animation frame. Keeping it in a ref means
   // playback never re-renders the studio; the still exporter reads it only at
   // the moment it needs it.
@@ -382,9 +385,17 @@ export function DirectorReelStudio({
 
   function travelTo(next: typeof history) {
     if (next === history) return;
+    // Removing a clip revokes its object URL, so a snapshot restored by undo
+    // can point at media the browser has already released. Mint live URLs from
+    // the Files the snapshot still holds before handing the project back.
+    const restored = rehydrateProjectMedia(next.present.project, travelUrlsRef.current);
     travellingRef.current = true;
-    setHistory(next);
-    onChange(next.present.project);
+    // Keep history's tip identical to what the app now holds, or the next edit
+    // would look like a change and push a spurious entry.
+    setHistory(restored === next.present.project
+      ? next
+      : { ...next, present: { ...next.present, project: restored } });
+    onChange(restored);
   }
 
   function undoEdit() {

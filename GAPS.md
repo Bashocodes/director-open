@@ -45,8 +45,10 @@ with a bundled sample loaded, an effect applied and its generated controls
 visible. It contains only bundled sample media and no keys, account details, or
 private paths.
 
-**Remaining nicety:** the shot is a 1456×839 window capture. A higher-density
-capture would read better on retina displays.
+**Known limit:** the capture path produces 1456×839 regardless of window size,
+so a retina-density hero is not reachable this way. Replacing it means taking
+the screenshot by hand at 2x. It is stored as JPEG because the capture is
+already lossy; re-encoding it as PNG only inflated the file.
 
 ### Whole history is now legacy-name clean — but the remote is not
 

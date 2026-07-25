@@ -109,3 +109,51 @@ export function redoHistory(history: ProjectHistory): ProjectHistory {
 export function clipEditLabel(clipIds: readonly string[], patchKeys: readonly string[]): string {
   return `clip:${[...clipIds].sort().join('+')}:${[...patchKeys].sort().join(',')}`;
 }
+
+/**
+ * Gives a restored project live media again.
+ *
+ * Removing a clip revokes its object URL — correct while the removal stands,
+ * fatal once undo brings the clip back, because the snapshot still points at a
+ * URL nothing can load. Anything revoked that way is backed by a File held in
+ * the snapshot, so a fresh URL can always be minted from it.
+ *
+ * `urlByFile` caches one URL per File so repeatedly undoing and redoing does
+ * not accumulate handles.
+ */
+export function rehydrateProjectMedia(
+  project: ReelProject,
+  urlByFile: Map<File, string>,
+  createUrl: (file: File) => string = URL.createObjectURL,
+): ReelProject {
+  // Whether a given object URL is still live cannot be tested synchronously, so
+  // rather than guess, always serve travelled projects from freshly minted
+  // URLs. The cache keeps that to one per File however far the person travels.
+  const urlFor = (file: File) => {
+    const cached = urlByFile.get(file);
+    if (cached) return cached;
+    const minted = createUrl(file);
+    urlByFile.set(file, minted);
+    return minted;
+  };
+
+  let changed = false;
+  const clips = project.clips.map((clip) => {
+    if (!clip.sourceFile) return clip;
+    const url = urlFor(clip.sourceFile);
+    if (url === clip.imageUrl) return clip;
+    changed = true;
+    return { ...clip, imageUrl: url };
+  });
+
+  let audio = project.audio;
+  if (audio?.sourceFile) {
+    const url = urlFor(audio.sourceFile);
+    if (url !== audio.url) {
+      audio = { ...audio, url };
+      changed = true;
+    }
+  }
+
+  return changed ? { ...project, clips, audio } : project;
+}

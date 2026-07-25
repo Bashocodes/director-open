@@ -8,6 +8,7 @@ import {
   HISTORY_LIMIT,
   pushHistory,
   redoHistory,
+  rehydrateProjectMedia,
   undoHistory,
 } from './projectHistory';
 import type { ReelProject } from './types';
@@ -137,6 +138,86 @@ describe('undo and redo', () => {
     history = undoHistory(history);
     // Identity, not a clone: object URLs and Files must be the same references.
     expect(history.present.project).toBe(original);
+  });
+});
+
+describe('rehydrateProjectMedia', () => {
+  function file(name: string) {
+    return new File([new Uint8Array([1, 2, 3])], name, { type: 'image/jpeg' });
+  }
+
+  function withClip(sourceFile: File | undefined, imageUrl: string): ReelProject {
+    return {
+      ...project('reel'),
+      clips: [{
+        id: 'clip-1',
+        objectId: null,
+        title: 'Clip',
+        imageUrl,
+        sourceFile,
+        duration: 3.2,
+        effect: 'clean',
+        visualEffect: 'none',
+        transition: 'cut',
+        transitionDuration: 0,
+        motion: 'push-in',
+        intensity: 60,
+        textLayers: [],
+      }],
+    };
+  }
+
+  it('replaces the URL of a clip whose media was revoked', () => {
+    /*
+     * The real failure: deleting a clip revokes its object URL, so undoing the
+     * deletion restored a clip whose image could no longer load.
+     */
+    const source = file('a.jpg');
+    const minted: string[] = [];
+    const result = rehydrateProjectMedia(
+      withClip(source, 'blob:revoked'),
+      new Map(),
+      (f) => { const url = `blob:fresh-${f.name}`; minted.push(url); return url; },
+    );
+    expect(result.clips[0].imageUrl).toBe('blob:fresh-a.jpg');
+    expect(minted).toHaveLength(1);
+  });
+
+  it('mints one URL per File however far you travel', () => {
+    const source = file('a.jpg');
+    const cache = new Map<File, string>();
+    let calls = 0;
+    const create = (f: File) => { calls += 1; return `blob:fresh-${f.name}-${calls}`; };
+    const first = rehydrateProjectMedia(withClip(source, 'blob:revoked'), cache, create);
+    const second = rehydrateProjectMedia(withClip(source, 'blob:revoked'), cache, create);
+    expect(calls).toBe(1);
+    expect(second.clips[0].imageUrl).toBe(first.clips[0].imageUrl);
+  });
+
+  it('leaves clips with no source File untouched', () => {
+    // Restored-from-storage clips are never revoked by the removal path, and
+    // there is no File to mint a replacement from.
+    const input = withClip(undefined, 'blob:restored');
+    const result = rehydrateProjectMedia(input, new Map(), () => 'blob:should-not-be-used');
+    expect(result).toBe(input);
+    expect(result.clips[0].imageUrl).toBe('blob:restored');
+  });
+
+  it('rehydrates audio as well as clips', () => {
+    const audioFile = file('track.mp3');
+    const input: ReelProject = {
+      ...withClip(undefined, 'blob:restored'),
+      audio: { name: 'track.mp3', url: 'blob:revoked-audio', sourceFile: audioFile },
+    };
+    const result = rehydrateProjectMedia(input, new Map(), (f) => `blob:fresh-${f.name}`);
+    expect(result.audio?.url).toBe('blob:fresh-track.mp3');
+  });
+
+  it('returns the same object when nothing needed replacing', () => {
+    const source = file('a.jpg');
+    const cache = new Map<File, string>([[source, 'blob:live']]);
+    const input = withClip(source, 'blob:live');
+    expect(rehydrateProjectMedia(input, cache, () => 'blob:unused')).toBe(input);
   });
 });
 

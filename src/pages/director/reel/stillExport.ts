@@ -1,6 +1,7 @@
 import type { ReelAspectRatio } from '../../../shared/directorSchemas';
 import { composeClipFrame } from './clipFrameComposer';
-import type { ReelClip } from './types';
+import { effectSeed, structuralEffectSampleAtProgress } from './effectRecipes';
+import { reelVisualEffectStack, type ReelClip } from './types';
 
 /**
  * Still export.
@@ -79,6 +80,42 @@ export function stillFileName(clipTitle: string, extension: string) {
     .slice(0, 60)
     .toLowerCase();
   return `${base || 'director-still'}.${extension}`;
+}
+
+/**
+ * Effects animate on a lead-in / rise / hold / recover envelope so a reel loops
+ * cleanly, which means they render as nothing at the very start and end of a
+ * clip. A still captured there would silently lose them, so the exporter needs
+ * to be able to say how active the effects are at the moment being captured.
+ *
+ * Returns 0..1, or null when the clip carries no animated visual effect and the
+ * question does not apply.
+ */
+export function effectPhaseAt(clip: ReelClip, progress: number, fps: number): number | null {
+  const effects = reelVisualEffectStack(clip);
+  if (effects.length === 0) return null;
+  const sample = structuralEffectSampleAtProgress(
+    progress,
+    clip.duration,
+    fps,
+    effectSeed(`${clip.id}:${effects[0]}`),
+  );
+  return sample.phase;
+}
+
+/** The moment inside a clip where its effects are strongest. */
+export function peakEffectProgress(clip: ReelClip, fps: number): number {
+  let best = 0.5;
+  let bestPhase = -1;
+  for (let step = 0; step <= 100; step += 1) {
+    const progress = step / 100;
+    const phase = effectPhaseAt(clip, progress, fps) ?? 0;
+    if (phase > bestPhase) {
+      bestPhase = phase;
+      best = progress;
+    }
+  }
+  return best;
 }
 
 export type RenderStillOptions = {
