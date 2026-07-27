@@ -1,6 +1,6 @@
 # Director/Conductor deployment lane
 
-Director Open targets the existing Cloudflare Worker named `director-open`. The committed configuration keeps its `workers.dev` hostname and assigns only `director.aikizi.com` as a Custom Domain. It contains no service binding and must never create a second Worker.
+Director Open owns the Cloudflare Worker named `director-open`. Its first deployment creates that Worker; later deployments update the same Worker. The committed configuration keeps its `workers.dev` hostname and assigns only `director.aikizi.com` as a Custom Domain. It contains no service binding and must never create a parallel Worker.
 
 The `aikizi.com` apex, `www.aikizi.com`, and the live `aikizi.com/director*` route are outside this deployment lane and must not be edited.
 
@@ -54,7 +54,7 @@ pnpm deploy:dry-run
 
 The dry run builds `dist/`, validates `wrangler.jsonc`, bundles the Worker, resolves static assets, and stops without creating a production deployment.
 
-Both deployment commands first run `wrangler deployments list --name director-open`. If that Worker does not already exist in the authenticated account, the command stops instead of allowing Wrangler to create it.
+Both deployment commands build first, then run a local deployment guard. The guard pins Worker name `director-open`, account `10caedbcfcc1e6179107cde83789ac60`, and the single `director.aikizi.com` Custom Domain; confirms Wrangler is authenticated to that account; and refuses placeholder or inline Conductor assets. It deliberately does not require deployment history, so the first deployment can create `director-open`.
 
 ## Deploy
 

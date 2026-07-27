@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "director-open",
+  "account_id": "10caedbcfcc1e6179107cde83789ac60",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-07-27",
   "workers_dev": true,
