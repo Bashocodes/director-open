@@ -10,9 +10,22 @@ endif()
 
 set(AFTER_EFFECTS_SDK_ROOT "" CACHE PATH
   "Root of the extracted Adobe After Effects SDK (the directory containing Examples)")
+
+# Fall back to the environment so a machine can be configured once instead of
+# passing -D on every build. No path is hardcoded: the SDK is Adobe's to
+# download and lives wherever its owner put it.
+if(NOT AFTER_EFFECTS_SDK_ROOT AND DEFINED ENV{AFTER_EFFECTS_SDK_ROOT})
+  set(AFTER_EFFECTS_SDK_ROOT "$ENV{AFTER_EFFECTS_SDK_ROOT}")
+endif()
+
 if(NOT EXISTS "${AFTER_EFFECTS_SDK_ROOT}/Examples/Headers/AE_Effect.h")
   message(FATAL_ERROR
-    "Set AFTER_EFFECTS_SDK_ROOT to the extracted Adobe After Effects SDK 25.6 root.")
+    "The Adobe After Effects SDK was not found.\n"
+    "Download it (free, an Adobe account is required) from\n"
+    "  https://developer.adobe.com/after-effects/\n"
+    "then either export AFTER_EFFECTS_SDK_ROOT=/path/to/sdk or configure with\n"
+    "  cmake -S . -B build -DAFTER_EFFECTS_SDK_ROOT=/path/to/sdk\n"
+    "The path must contain Examples/Headers/AE_Effect.h.")
 endif()
 
 set(AE_EXAMPLES "${AFTER_EFFECTS_SDK_ROOT}/Examples")

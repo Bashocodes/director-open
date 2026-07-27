@@ -54,15 +54,31 @@ published September 2025:
 - Archive: `AfterEffectsSDK_25.6_61_mac.zip`
 - SHA-256: `c6abccd52ae25936b819b78c4fea2858bd161f216f72f75184fe9ec55a49756e`
 
-Keep the licensed SDK outside this repository. After extracting its nested
-Zstandard archive, point CMake at the directory that contains `Examples`:
+The SDK is a free download from
+[developer.adobe.com/after-effects](https://developer.adobe.com/after-effects/);
+an Adobe account is required but no purchase is. Keep it outside this
+repository — it is Adobe's to distribute, not ours.
+
+After extracting its nested Zstandard archive, point the build at the directory
+that contains `Examples`. Set it once in your environment:
+
+```sh
+export AFTER_EFFECTS_SDK_ROOT=/absolute/path/to/ae25.6_61.64bit.AfterEffectsSDK
+cmake -S . -B build
+cmake --build build --config Release
+ctest --test-dir build --output-on-failure
+```
+
+Or pass it per build, which overrides the environment:
 
 ```sh
 cmake -S . -B build \
   -DAFTER_EFFECTS_SDK_ROOT=/absolute/path/to/ae25.6_61.64bit.AfterEffectsSDK
-cmake --build build --config Release
-ctest --test-dir build --output-on-failure
 ```
+
+Do not leave the SDK in a temporary or session directory. The build resolves it
+at configure time, so a vanished SDK fails the build for reasons that look
+nothing like the real cause.
 
 On macOS the artifact is:
 
@@ -73,6 +89,31 @@ build/DirectorPixelSort.plugin
 `.aex` is the Windows After Effects module extension. This macOS SDK build
 correctly emits a `.plugin` bundle; a Windows `.aex` must be built and
 resource-compiled on Windows with Adobe's matching Windows SDK.
+
+## If After Effects ignores the plugin
+
+> No loaders recognized this plugin, so the plugin is set to Ignore.
+
+That message means the bundle was scanned and rejected before `EffectMain` ran,
+and it is almost never the compiled code. Adobe's loader identifies an effect by
+the `eFKT`/`FXTC` pair, which must appear in **both** places:
+
+- `Info.plist` — `CFBundlePackageType` `eFKT` *and* `CFBundleSignature` `FXTC`
+- `Contents/PkgInfo` — the eight bytes `eFKTFXTC`, no trailing newline
+
+`LSRequiresCarbon` is also present in Adobe's own samples. `PkgInfo` must be
+written before `codesign` runs, or the signature seals a bundle that does not
+contain it. Check these before debugging the binary; a valid signature, an
+exported `_EffectMain`, and a correct PiPL will all pass while the plugin is
+still ignored.
+
+Install to:
+
+```text
+~/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore/
+```
+
+After Effects scans plugins only at launch, so restart it after installing.
 
 To install for the current macOS user, quit After Effects, copy the bundle to:
 
