@@ -1,4 +1,4 @@
-# Director Pixel Sort — native Adobe effect boundary
+# Director Pixel Sort — native Adobe effect
 
 `director_pixel_sort_core.cpp` is the original float RGBA sorting kernel for
 the Director Adobe effect. It is deliberately independent of Adobe headers so
@@ -11,12 +11,12 @@ thresholds, and a precomputed Sobel field. It sorts contiguous intervals into
 bounded tears rather than making an independent random decision for every
 pixel. Scratch buffers are allocated once per frame and reused across runs.
 
-The remaining adapter is intentionally a separate build step because Adobe's
-After Effects SDK is licensed and cannot be vendored into Director. Once the
-SDK is installed locally, the adapter must implement `PF_Cmd_GLOBAL_SETUP`,
-`PF_Cmd_PARAMS_SETUP`, and `PF_Cmd_RENDER`, advertise
-`PF_OutFlag2_FLOAT_COLOR_AWARE`, request the `PF_PixelFloat` world, and call
-`director_pixel_sort::render_rgba_float` for each frame.
+`DirectorPixelSort.cpp` is the real CPU SmartFX adapter. It advertises
+`PF_OutFlag2_FLOAT_COLOR_AWARE`, accepts only the 32-bpc SmartFX render path,
+requests the full input frame so sorting cannot change at tile boundaries, and
+passes the host's padded ARGB float rows through
+`director_pixel_sort_plugin_bridge.cpp` into the RGBA core. There is no 8-bit
+fallback.
 
 The public parameter contract is:
 
@@ -40,9 +40,46 @@ c++ -std=c++17 -O2 -Wall -Wextra -pedantic \
 /tmp/director_pixel_sort_core_test
 ```
 
-## SDK gate
+`node packages/director-adobe/scripts/test-native.mjs` also runs an exact
+parity test from the repository root. It
+uses padded ARGB float rows like After Effects, invokes the same bridge called
+by SmartFX, and compares every 32-bit float channel bit-for-bit with a direct
+core render.
 
-The Adobe SDK must be obtained from Adobe's developer distribution and placed
-outside this repository. Do not commit SDK headers or binaries. The adapter
-will be added and compiled only after that licensed SDK is available; the
-portable kernel and all Adobe-neutral contracts are already part of Director.
+## Build with Adobe After Effects SDK 25.6
+
+The verified SDK package is Adobe After Effects Plug-in SDK 25.6.61 for macOS,
+published September 2025:
+
+- Archive: `AfterEffectsSDK_25.6_61_mac.zip`
+- SHA-256: `c6abccd52ae25936b819b78c4fea2858bd161f216f72f75184fe9ec55a49756e`
+
+Keep the licensed SDK outside this repository. After extracting its nested
+Zstandard archive, point CMake at the directory that contains `Examples`:
+
+```sh
+cmake -S . -B build \
+  -DAFTER_EFFECTS_SDK_ROOT=/absolute/path/to/ae25.6_61.64bit.AfterEffectsSDK
+cmake --build build --config Release
+ctest --test-dir build --output-on-failure
+```
+
+On macOS the artifact is:
+
+```text
+build/DirectorPixelSort.plugin
+```
+
+`.aex` is the Windows After Effects module extension. This macOS SDK build
+correctly emits a `.plugin` bundle; a Windows `.aex` must be built and
+resource-compiled on Windows with Adobe's matching Windows SDK.
+
+To install for the current macOS user, quit After Effects, copy the bundle to:
+
+```text
+~/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore/
+```
+
+Then restart After Effects. The effect appears under `Director > Director Pixel
+Sort`. The CMake build ad-hoc signs the development bundle; production
+distribution still requires an Apple Developer ID signature and notarization.
