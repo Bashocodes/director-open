@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   Download,
+  FolderOpen,
   Image as ImageIcon,
   ImagePlus,
   Info,
@@ -71,6 +72,22 @@ import type { InspectorSectionId, PlayerFit } from '../workspaceLayout';
 import type { TextLayer } from '../../../shared/directorSchemas';
 import { createTextLayer, MAX_TEXT_LAYERS_PER_CLIP } from '../../../shared/textLayers';
 import { TextLayerInspector } from './TextLayerInspector';
+import {
+  effectiveRenderBackend,
+  renderBackendLabel,
+} from '../../../shared/directorRenderBackend';
+import {
+  adobeHandoffArchiveName,
+  DirectorLocalAdobeUnavailableError,
+  sendDirectorAdobeHandoffToLocalService,
+  zipDirectorAdobeHandoff,
+} from './adobeHandoff';
+import { prepareDirectorAdobeHandoff } from './adobeEffectPlates';
+import {
+  DirectorLocalOutputUnavailableError,
+  revealDirectorLocalOutput,
+  saveDirectorLocalOutput,
+} from './localOutput';
 import './DirectorReelStudio.css';
 
 type Props = {
@@ -164,6 +181,8 @@ export function DirectorReelStudio({
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
   const [showStillExport, setShowStillExport] = useState(false);
   const [loadingSamples, setLoadingSamples] = useState(false);
+  const [outputNotice, setOutputNotice] = useState('');
+  const [latestOutputPath, setLatestOutputPath] = useState<string | null>(null);
   const [history, setHistory] = useState(() => createHistory(project, Date.now()));
   const pendingLabelRef = useRef<string | null>(null);
   // Set while applying an undo/redo, so the resulting prop change is not
@@ -248,6 +267,8 @@ export function DirectorReelStudio({
     if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
     outputUrlRef.current = null;
     renderedFingerprintRef.current = null;
+    setOutputNotice('');
+    setLatestOutputPath(null);
     setVerifyReport(null);
     setRenderState(INITIAL_RENDER_STATE);
   }, [fingerprint]);
@@ -496,10 +517,16 @@ export function DirectorReelStudio({
 
   async function render() {
     if (!project.clips.length || rendering) return;
+    if (effectiveRenderBackend(project) === 'after-effects') {
+      await prepareAdobeHandoff();
+      return;
+    }
     if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
     outputUrlRef.current = null;
     renderedFingerprintRef.current = null;
     setVerifyReport(null);
+    setOutputNotice('');
+    setLatestOutputPath(null);
     setRenderState({ stage: 'loading', progress: 0, message: 'Starting local render…', outputUrl: null, outputBytes: null });
     const renderer = new BrowserFfmpegRenderer();
     const job = { id: ++renderIdRef.current, renderer, cancelled: false };
@@ -556,9 +583,48 @@ export function DirectorReelStudio({
         });
         return;
       }
+      setRenderState({
+        stage: 'preparing',
+        progress: 0.99,
+        message: 'Saving FFmpeg output to Movies/Director…',
+        outputUrl: null,
+        outputBytes: blob.size,
+      });
+      let savedOutputPath: string | null = null;
+      let saveNotice = '';
+      try {
+        const saved = await saveDirectorLocalOutput(blob, project.title);
+        savedOutputPath = saved.outputPath;
+        saveNotice = `Saved via FFmpeg. Output: ${saved.outputPath}`;
+      } catch (error) {
+        saveNotice = error instanceof DirectorLocalOutputUnavailableError
+          ? 'Automatic local saving is unavailable in this build. Use Download MP4 to save the finished file.'
+          : `The MP4 rendered successfully, but automatic saving failed: ${
+            error instanceof Error ? error.message : String(error)
+          } Use Download MP4 to keep the file.`;
+      }
+      if (!ownsRender() || job.cancelled) return;
+      if (renderFingerprint !== latestFingerprintRef.current) {
+        setRenderState({
+          stage: 'error',
+          progress: 0,
+          message: savedOutputPath
+            ? `The edit changed after rendering. The older output is safe at ${savedOutputPath}.`
+            : 'The edit changed during rendering, so the older browser output was discarded.',
+          outputUrl: null,
+          outputBytes: null,
+        });
+        if (savedOutputPath) {
+          setLatestOutputPath(savedOutputPath);
+          setOutputNotice(saveNotice);
+        }
+        return;
+      }
       const outputUrl = URL.createObjectURL(blob);
       outputUrlRef.current = outputUrl;
       renderedFingerprintRef.current = renderFingerprint;
+      setLatestOutputPath(savedOutputPath);
+      setOutputNotice(saveNotice);
       setVerifyReport(completedVerifyReport ?? {
         version: 1,
         verdict: 'fail',
@@ -570,7 +636,13 @@ export function DirectorReelStudio({
           message: 'No verification report was returned — fail. The MP4 remains available to download.',
         }],
       });
-      setRenderState({ stage: 'complete', progress: 1, message: 'Local MP4 ready.', outputUrl, outputBytes: blob.size });
+      setRenderState({
+        stage: 'complete',
+        progress: 1,
+        message: savedOutputPath ? 'FFmpeg output saved and verified.' : 'Local MP4 ready.',
+        outputUrl,
+        outputBytes: blob.size,
+      });
     } catch (error) {
       if (!ownsRender()) return;
       const baseMessage = error instanceof Error ? error.message : 'The local render failed.';
@@ -590,6 +662,119 @@ export function DirectorReelStudio({
         activeRenderRef.current = null;
         if (job.cancelled) setRenderState(INITIAL_RENDER_STATE);
       }
+    }
+  }
+
+  async function prepareAdobeHandoff() {
+    if (!project.clips.length || rendering) return;
+    if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
+    outputUrlRef.current = null;
+    renderedFingerprintRef.current = null;
+    setVerifyReport(null);
+    setOutputNotice('');
+    setLatestOutputPath(null);
+    setRenderState({ stage: 'preparing', progress: 0, message: 'Saving to Movies/Director and rendering with After Effects…', outputUrl: null, outputBytes: null });
+    try {
+      const handoff = await prepareDirectorAdobeHandoff(project, {
+        onStage: (message) => setRenderState((current) => ({
+          ...current,
+          stage: 'preparing',
+          message,
+        })),
+        onProgress: (progress) => setRenderState((current) => ({
+          ...current,
+          progress: Math.min(0.45, progress * 0.45),
+        })),
+        onLog: (message) => { lastRenderLogRef.current = message; },
+      });
+      onChange({ ...project, renderRequested: false });
+      setRenderState((current) => ({
+        ...current,
+        progress: 0.5,
+        message: 'Building the 32-bpc After Effects composition…',
+      }));
+      try {
+        const result = await sendDirectorAdobeHandoffToLocalService(handoff);
+        renderedFingerprintRef.current = fingerprint;
+        if (result.adobe.status === 'rendered' || result.adobe.status === 'queued') {
+          const codec = typeof result.adobe.receipt.deliveryCodec === 'string'
+            ? result.adobe.receipt.deliveryCodec
+            : typeof result.adobe.receipt.outputCodec === 'string'
+              ? result.adobe.receipt.outputCodec
+              : 'ProRes';
+          const reportedBitDepth = typeof result.adobe.receipt.deliveryBitDepth === 'number'
+            ? result.adobe.receipt.deliveryBitDepth
+            : result.adobe.receipt.outputBitDepth;
+          const bitDepth = typeof reportedBitDepth === 'number'
+            ? ` ${reportedBitDepth}-bit`
+            : '';
+          if (result.adobe.status === 'rendered') {
+            setOutputNotice(`Rendered via After Effects as verified ${codec}${bitDepth}. Output: ${result.outputPath}`);
+            setLatestOutputPath(result.outputPath);
+            setRenderState({ stage: 'complete', progress: 1, message: 'Adobe output rendered and verified.', outputUrl: null, outputBytes: result.outputBytes ?? handoff.totalBytes });
+          } else {
+            setOutputNotice(`Built and queued in After Effects as ${codec}${bitDepth}. ${result.adobe.warning} Output: ${result.outputPath}`);
+            setRenderState({ stage: 'complete', progress: 1, message: 'Queued in After Effects.', outputUrl: null, outputBytes: handoff.totalBytes });
+          }
+          return;
+        }
+        if (result.adobe.status === 'not-configured') {
+          setOutputNotice(`Saved automatically to ${result.packagePath ?? 'Director’s private handoff cache'}.`);
+          setRenderState({
+            stage: 'error',
+            progress: 0,
+            message: `${result.adobe.error} The complete package is safe at ${result.packagePath ?? 'Director’s private handoff cache'}.`,
+            outputUrl: null,
+            outputBytes: handoff.totalBytes,
+          });
+          return;
+        }
+        setOutputNotice(`The complete package is safe at ${result.packagePath ?? 'Director’s private handoff cache'}.`);
+        setRenderState({
+          stage: 'error',
+          progress: 0,
+          message: result.adobe.error,
+          outputUrl: null,
+          outputBytes: handoff.totalBytes,
+        });
+        return;
+      } catch (error) {
+        if (!(error instanceof DirectorLocalAdobeUnavailableError)) throw error;
+      }
+
+      // Static/hosted builds have no trusted local process. Download one
+      // complete ZIP to the browser's preset Downloads location without
+      // invoking Chrome's protected directory picker.
+      const archive = await zipDirectorAdobeHandoff(handoff);
+      const outputUrl = URL.createObjectURL(archive);
+      outputUrlRef.current = outputUrl;
+      const anchor = document.createElement('a');
+      anchor.href = outputUrl;
+      anchor.download = adobeHandoffArchiveName(project.title);
+      anchor.hidden = true;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      renderedFingerprintRef.current = fingerprint;
+      setOutputNotice('The local Adobe service was unavailable, so Director downloaded the complete package to your browser’s Downloads folder.');
+      setRenderState({ stage: 'complete', progress: 1, message: 'Adobe package downloaded.', outputUrl, outputBytes: archive.size });
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : 'Director could not prepare the Adobe render.';
+      setRenderState({ stage: 'error', progress: 0, message, outputUrl: null, outputBytes: null });
+    }
+  }
+
+  async function showLatestOutputInFinder() {
+    if (!latestOutputPath) return;
+    try {
+      await revealDirectorLocalOutput(latestOutputPath);
+      setOutputNotice(`Finder opened with ${latestOutputPath.split('/').pop() ?? 'the Director output'} selected.`);
+    } catch (error) {
+      setOutputNotice(
+        error instanceof Error ? error.message : 'Director could not reveal the output in Finder.',
+      );
     }
   }
 
@@ -650,13 +835,29 @@ export function DirectorReelStudio({
                 { id: '24', label: '24 fps', description: 'Traditional film cadence.' },
                 { id: '30', label: '30 fps', description: 'Smoother motion.' },
               ]} onChange={(fps) => commitProject({ ...project, fps: Number(fps) as 24 | 30 })} />
+              <ReelSelect label="Render engine" value={effectiveRenderBackend(project)} options={[
+                { id: 'ffmpeg', label: 'FFmpeg · free/local', description: 'Browser-local H.264 render. Available without Adobe.' },
+                { id: 'after-effects', label: 'Adobe After Effects', description: '32-bpc local Adobe build through the existing MCP bridge.' },
+              ]} onChange={(renderBackend) => commitProject({
+                ...project,
+                renderBackend,
+                colorDepth: renderBackend === 'after-effects' ? 32 : 8,
+              })} />
+              {effectiveRenderBackend(project) === 'after-effects' && (
+                <ReelSelect label="Adobe processing" value="32" options={[
+                  { id: '32', label: '32 bpc float', description: 'Required for Director’s Adobe HDR workflow.' },
+                ]} onChange={() => undefined} disabled />
+              )}
               <p className="quality-note">{REEL_QUALITIES.find((item) => item.id === project.quality)?.description}</p>
-              <p className={`quality-estimate${renderEstimate.oversized || renderEstimate.slow ? ' warn' : ''}`}>
+              <p className="quality-note subtle">{effectiveRenderBackend(project) === 'after-effects'
+                ? 'Director prepares selected structural effects with its exact render engine, then After Effects builds the 32-bpc Rec.2100 HLG composition and verified HEVC Main 10 HLG delivery.'
+                : 'FFmpeg remains the free, local rendering path for users without Adobe.'}</p>
+              <p className={`quality-estimate${effectiveRenderBackend(project) === 'ffmpeg' && (renderEstimate.oversized || renderEstimate.slow) ? ' warn' : ''}`}>
                 <span>{dimensions.width}×{dimensions.height}</span>
-                <span>{renderEstimate.durationLabel} to render</span>
-                <span>{renderEstimate.bytesLabel}</span>
+                <span>{effectiveRenderBackend(project) === 'after-effects' ? 'Rendered by After Effects' : `${renderEstimate.durationLabel} to render`}</span>
+                <span>{effectiveRenderBackend(project) === 'after-effects' ? 'Verified HLG master' : renderEstimate.bytesLabel}</span>
               </p>
-              {(renderEstimate.oversized || renderEstimate.slow) && (
+              {effectiveRenderBackend(project) === 'ffmpeg' && (renderEstimate.oversized || renderEstimate.slow) && (
                 <p className="quality-estimate-note">
                   {renderEstimate.oversized
                     ? 'This file may be too large for social uploads. Balanced or High is usually the better post.'
@@ -857,7 +1058,7 @@ export function DirectorReelStudio({
       <footer className="reel-render-bar">
         <button type="button" className="back-board" onClick={onClose}><ArrowLeft size={14} /> Board</button>
         <div className="render-format">
-          <span className="render-format-chip">{project.aspectRatio} · {dimensions.width}×{dimensions.height} · H.264 · {project.fps}fps</span>
+          <span className="render-format-chip">{project.aspectRatio} · {dimensions.width}×{dimensions.height} · {effectiveRenderBackend(project) === 'after-effects' ? 'HDR master · HLG' : 'H.264'} · {project.fps}fps</span>
           <div className="render-detail-anchor">
             <button
               type="button"
@@ -870,15 +1071,18 @@ export function DirectorReelStudio({
               <>
                 <button type="button" className="render-detail-backdrop" aria-label="Close render details" onClick={() => setShowRenderDetails(false)} />
                 <div className="render-detail-popover" role="dialog" aria-label="Render engine details">
-                  <h4>Local render engine</h4>
+                  <h4>{renderBackendLabel(effectiveRenderBackend(project))}</h4>
                   <dl>
-                    <div><dt>Engine</dt><dd>FFmpeg.wasm · single-thread</dd></div>
+                    <div><dt>Engine</dt><dd>{effectiveRenderBackend(project) === 'after-effects' ? 'Director Adobe · local MCP bridge' : 'FFmpeg.wasm · single-thread'}</dd></div>
+                    <div><dt>Precision</dt><dd>{effectiveRenderBackend(project) === 'after-effects' ? '32 bpc float composition' : '8-bit YUV 4:2:0 delivery'}</dd></div>
                     <div><dt>Upload</dt><dd>None — media stays on device</dd></div>
                     <div><dt>Processor</dt><dd>{capability.cores ? `${capability.cores} logical cores` : 'Managed by browser'}</dd></div>
                     <div><dt>Memory hint</dt><dd>{capability.memory ? `${capability.memory} GB` : 'Managed by browser'}</dd></div>
                   </dl>
-                  <p className={constrainedHighQuality ? 'warn' : ''}>
-                    {constrainedHighQuality
+                  <p className={effectiveRenderBackend(project) === 'ffmpeg' && constrainedHighQuality ? 'warn' : ''}>
+                    {effectiveRenderBackend(project) === 'after-effects'
+                      ? 'The Adobe path prepares a native After Effects composition; rendering is completed by the local Director Adobe bridge.'
+                      : constrainedHighQuality
                       ? '1080p may be slow on this device — 720p is recommended.'
                       : 'This device can run the premium local effect engine.'}
                   </p>
@@ -894,6 +1098,7 @@ export function DirectorReelStudio({
           </div>
         )}
         {verifyReport && <ExportVerifyPanel report={verifyReport} />}
+        {outputNotice && <p className="quality-note subtle" role="status">{outputNotice}</p>}
         {showQualityWarning && heavyEffectsNeedQuality && !rendering && !renderState.outputUrl && (
           <div className="render-quality-warning" role="alert">
             <span>Heavy visual effects need High or Maximum to look right. {project.quality === 'draft' ? 'Draft' : 'Balanced'} will soften pixel-sort and grain texture.</span>
@@ -910,6 +1115,15 @@ export function DirectorReelStudio({
           </div>
         )}
         <div className="still-export-anchor">
+          {latestOutputPath && (
+            <button
+              type="button"
+              className="still-export-toggle"
+              onClick={() => { void showLatestOutputInFinder(); }}
+            >
+              <FolderOpen size={14} /> Show output
+            </button>
+          )}
           <button
             type="button"
             className="still-export-toggle"
@@ -937,12 +1151,28 @@ export function DirectorReelStudio({
           )}
         </div>
         {renderState.outputUrl ? (
-          <a className="render-button complete" href={renderState.outputUrl} download={`director-open-${new Date().toISOString().slice(0, 10)}.mp4`}><Download size={14} /> Download MP4</a>
+          <a
+            className="render-button complete"
+            href={renderState.outputUrl}
+            download={effectiveRenderBackend(project) === 'after-effects'
+              ? adobeHandoffArchiveName(project.title)
+              : latestOutputPath?.split('/').pop() ?? `director-open-${new Date().toISOString().slice(0, 10)}.mp4`}
+          >
+            <Download size={14} /> {effectiveRenderBackend(project) === 'after-effects'
+              ? 'Download Adobe package'
+              : latestOutputPath ? 'Download copy' : 'Download MP4'}
+          </a>
         ) : rendering ? (
-          <button type="button" className="render-button cancel" disabled={renderState.stage === 'cancelling'} onClick={cancelRender}><X size={14} /> {renderState.stage === 'cancelling' ? 'Stopping…' : 'Cancel render'}</button>
+          effectiveRenderBackend(project) === 'after-effects'
+            ? <button type="button" className="render-button" disabled><LoaderCircle size={14} className="spin" /> Rendering with After Effects…</button>
+            : <button type="button" className="render-button cancel" disabled={renderState.stage === 'cancelling'} onClick={cancelRender}><X size={14} /> {renderState.stage === 'cancelling' ? 'Stopping…' : 'Cancel render'}</button>
         ) : (
           <button type="button" className={`render-button ${project.renderRequested ? 'requested' : ''}`} disabled={!project.clips.length} onClick={requestRender}>
-            <Sparkles size={14} /> {project.renderRequested ? 'Director planned it · Confirm render' : renderState.stage === 'error' ? 'Retry local render' : 'Render on this device'}
+            <Sparkles size={14} /> {project.renderRequested
+              ? 'Director planned it · Confirm render'
+              : effectiveRenderBackend(project) === 'after-effects'
+                ? renderState.stage === 'error' ? 'Retry Adobe render' : 'Render with After Effects'
+                : renderState.stage === 'error' ? 'Retry local render' : 'Render on this device'}
           </button>
         )}
       </footer>

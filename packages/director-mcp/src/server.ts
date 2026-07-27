@@ -31,6 +31,7 @@ export function createDirectorMcpProtocolServer(service: DirectorMcpService) {
         'Use load_project before get_project_state.',
         'Call validate_actions before apply_actions.',
         'All paths must stay inside the server root.',
+        'build_adobe_render_plan reports media placeholders when browser File objects are absent.',
       ].join(' '),
     },
   );
@@ -111,6 +112,16 @@ export function createDirectorMcpProtocolServer(service: DirectorMcpService) {
       annotations: readOnlyAnnotations,
     },
     withStructuredErrors(async ({ path }) => service.buildRenderPlan(path)),
+  );
+
+  server.registerTool(
+    'build_adobe_render_plan',
+    {
+      description: 'Build the validated 32-bpc After Effects handoff plan without executing Adobe; omitted browser media is reported as placeholders.',
+      inputSchema: { path: pathSchema },
+      annotations: readOnlyAnnotations,
+    },
+    withStructuredErrors(async ({ path }) => service.buildAdobeRenderPlan(path)),
   );
 
   return server;

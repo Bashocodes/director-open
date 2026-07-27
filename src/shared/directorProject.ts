@@ -14,6 +14,7 @@ import {
 } from './directorSchemas';
 import { resolveReelVisualEffect } from './reelVisualEffects';
 import { migrateCaptionToTextLayer } from './textLayers';
+import { DIRECTOR_RENDER_BACKENDS } from './directorRenderBackend';
 
 export const DIRECTOR_PROJECT_FILE_VERSION = 2;
 export const MAX_DIRECTOR_PROJECT_JSON_BYTES = 5 * 1_048_576;
@@ -119,6 +120,8 @@ export const DirectorProjectReelSchema = z.object({
   clips: z.array(DirectorProjectReelClipSchema).max(16),
   selectedClipIds: z.array(z.string().max(160)).max(16),
   audio: z.null(),
+  renderBackend: z.enum(DIRECTOR_RENDER_BACKENDS).optional(),
+  colorDepth: z.union([z.literal(8), z.literal(16), z.literal(32)]).optional(),
   renderRequested: z.boolean(),
 }).strict();
 

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+public/conductor/
 .wrangler/
 .dev.vars
 .env
@@ -9,4 +10,3 @@ playwright-report/
 test-results/
 .DS_Store
 *.log
-

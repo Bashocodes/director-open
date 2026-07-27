@@ -1,4 +1,8 @@
 import { reelGradeStack, reelVisualEffectStack, type ReelProject } from './types';
+import {
+  effectiveColorDepth,
+  effectiveRenderBackend,
+} from '../../../shared/directorRenderBackend';
 
 export const MAX_IMAGE_BYTES = 64 * 1_048_576;
 export const MAX_AUDIO_BYTES = 128 * 1_048_576;
@@ -98,10 +102,13 @@ export function assertKnownMediaLimits(project: ReelProject) {
 }
 
 export function reelProjectFingerprint(project: ReelProject) {
+  const renderBackend = effectiveRenderBackend(project);
   return JSON.stringify({
     aspectRatio: project.aspectRatio,
     fps: project.fps,
     quality: project.quality,
+    renderBackend,
+    colorDepth: effectiveColorDepth(project),
     clips: project.clips.map((clip) => ({
       id: clip.id,
       objectId: clip.objectId,

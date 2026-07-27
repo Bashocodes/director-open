@@ -31,6 +31,7 @@ const EXPECTED_TOOLS = [
   'apply_actions',
   'compile_timeline',
   'build_render_plan',
+  'build_adobe_render_plan',
 ] as const;
 
 const EMPTY_REEL_ACTION: Omit<DirectorReelAction, 'type'> = {
@@ -152,7 +153,7 @@ afterEach(async () => {
 });
 
 describe('Director MCP protocol server', () => {
-  it('lists exactly the seven v1 tools in stable order', async () => {
+  it('lists exactly the eight v1 tools in stable order', async () => {
     const { root } = await makeFixtureRoot();
     const { client } = await makeHarness(root);
 
@@ -584,6 +585,30 @@ describe('Director MCP protocol server', () => {
       plan: {
         outputName: 'director-open-reel.mp4',
         duration: 3,
+      },
+    });
+
+    const adobePlanned = await client.callTool({
+      name: 'build_adobe_render_plan',
+      arguments: { path: 'fixture.director.json' },
+    });
+    expect(structured(adobePlanned)).toMatchObject({
+      ok: true,
+      mediaComplete: false,
+      missingMedia: [{
+        id: 'clip-media-clip-1',
+        kind: 'clip',
+      }],
+      plan: {
+        backend: 'after-effects',
+        composition: {
+          bitsPerChannel: 32,
+          workingSpace: 'Rec.2100 HLG Scene W100',
+        },
+        output: {
+          codec: 'prores-4444',
+          bitDepth: 12,
+        },
       },
     });
     expect(fetchSpy).not.toHaveBeenCalled();

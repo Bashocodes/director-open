@@ -14,10 +14,11 @@ Director Open is a browser-based visual direction and reel editor. Bring your ow
 - **Bring-your-own-key AI:** optional browser-direct adapters support OpenAI, Anthropic, Google Gemini, and OpenAI-compatible custom or local servers such as Ollama, LM Studio, and vLLM. Keys stay in browser storage and are sent only to the selected provider.
 - **Canvas-aware, human-gated edits:** chat receives a compact text serialization of the current project and proposes Zod-validated director actions. Nothing is applied until a person chooses **Apply**.
 - **Headless MCP editing:** the stdio-only `director-mcp` package lets Claude Code, Codex CLI, and other MCP clients inspect project JSON, validate and apply the same typed actions transactionally, compile timelines, and inspect render plans without starting the browser.
+- **Optional Adobe backend:** Director prepares selected structural effects with the same exact engine used by its FFmpeg render, then sends the timeline to After Effects as a 32-bpc composition through the local `director-adobe` MCP bridge. Successful movies are written directly to `~/Movies/Director`, and **Show output** reveals the selected file in Finder. FFmpeg remains the free/local renderer and is never removed.
 - **Typed plugin API:** effects, transitions, and motion presets declare stable IDs, Zod parameter schemas, UI hints, preview hooks, and export hooks. Plugin controls and catalogs come from the registry. The library ships 14 transitions (7 cinematic per-pixel: ripple-dissolve, liquid-melt, directional-wipe, luma-wipe, whip-pan, dip-to, glitch-cut), 19 camera moves, 14 color grades, and 17 visual effects (film-grain, halation-bloom, vignette-breathe, anamorphic-streak, chromatic-aberration, tilt-shift, light-leak, neon-edge, halftone-print and more) — every one a registry plugin, selected through a searchable picker with live thumbnails.
 - **Stills without a video render:** apply the same grades, effects, camera framing and text layers to a single frame and save it as PNG, JPEG or WebP at source resolution. It shares the player's composition code, so the export matches what you scrubbed to, and it never loads the video encoder — a still takes milliseconds, not minutes.
 - **Professional text layers:** each clip carries multiple positioned, styled, timed text layers (bundled local fonts, scrim/outline/shadow, fades) with WYSIWYG preview↔export parity and direct on-canvas manipulation.
-- **Browser-local reel engine:** FFmpeg.wasm compiles the timeline, grades, effects, motion, transitions, text, and optional audio into an H.264 MP4.
+- **Browser-local reel engine:** FFmpeg.wasm compiles the timeline, grades, effects, motion, transitions, text, and optional audio into an H.264 MP4. The local Director app saves each completed render under a unique `*-ffmpeg.mp4` name directly in `~/Movies/Director`; browser-only/static builds retain **Download MP4** as the fallback.
 - **Built-in export verification:** a bounded TypeScript ISO-BMFF parser inspects the resulting bytes for duration, tracks, codecs, dimensions, frames, audio, and container integrity. Warnings never block the download.
 - **No required backend:** the Cloudflare Worker serves the compiled SPA and security headers only. It has no media, AI, analytics, account, or persistence API.
 
@@ -62,7 +63,10 @@ Headless
 
 The Worker rejects `/api/*`; it never receives media, prompts, keys, projects, or rendered output. Provider-enabled chat calls leave the browser only as text sent directly to the provider the user selected. The FFmpeg core is executable application code downloaded on demand; no user media is sent with that request.
 
-Deployment is deliberately isolated to the `director-open` workers.dev lane. See [DEPLOY.md](./DEPLOY.md).
+Deployment is deliberately isolated to the existing `director-open` Worker: its
+`workers.dev` lane plus the exact `director.aikizi.com` Custom Domain. No apex,
+`www`, or existing `aikizi.com` route belongs to this project. See
+[DEPLOY.md](./DEPLOY.md).
 
 ## Privacy guarantee
 

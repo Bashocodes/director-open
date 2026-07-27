@@ -137,6 +137,10 @@ back through the existing upload and removal handlers. The interface — `list()
 an MCP-backed remote library) would implement. Only the local implementation
 ships; no remote provider, network access, or media egress is introduced.
 
-## Neutral deployment
+## Isolated deployment
 
-The Cloudflare Worker is configured only for its own `workers.dev` deployment by default. It contains no zone route, account identifier, private service binding, or external asset origin.
+The Cloudflare Worker is configured for its own `workers.dev` hostname and the
+exact `director.aikizi.com` Custom Domain. It contains no account identifier,
+private service binding, or external application origin. The `aikizi.com` apex,
+`www`, and the live `aikizi.com/director*` route remain separate and must not be
+modified by this deployment.

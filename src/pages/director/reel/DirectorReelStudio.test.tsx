@@ -24,6 +24,16 @@ const renderHarness = vi.hoisted(() => ({
   },
 }));
 
+const localOutputHarness = vi.hoisted(() => ({
+  paths: [] as Array<string | Error>,
+  saved: [] as Array<{ bytes: number; title: string }>,
+  revealed: [] as string[],
+}));
+
+const adobeHarness = vi.hoisted(() => ({
+  results: [] as Array<Record<string, unknown>>,
+}));
+
 vi.mock('./ReelPreview', () => ({ ReelPreview: () => <div>Preview</div> }));
 vi.mock('./ffmpegRenderer', () => ({
   hasHeavyVisualEffects: (project: { clips: Array<{ visualEffect?: string; visualEffectStack?: string[] }> }) => (
@@ -50,6 +60,52 @@ vi.mock('./ffmpegRenderer', () => ({
     }
   },
 }));
+
+vi.mock('./localOutput', () => {
+  class DirectorLocalOutputUnavailableError extends Error {}
+  return {
+    DirectorLocalOutputUnavailableError,
+    saveDirectorLocalOutput: async (output: Blob, title: string) => {
+      localOutputHarness.saved.push({ bytes: output.size, title });
+      const next = localOutputHarness.paths.shift()
+        ?? '/Users/test/Movies/Director/Studio-test-20260727-120000-ffmpeg.mp4';
+      if (next instanceof Error) throw next;
+      return {
+        ok: true,
+        backend: 'ffmpeg',
+        outputPath: next,
+        outputBytes: output.size,
+      };
+    },
+    revealDirectorLocalOutput: async (outputPath: string) => {
+      localOutputHarness.revealed.push(outputPath);
+    },
+  };
+});
+
+vi.mock('./adobeEffectPlates', () => ({
+  prepareDirectorAdobeHandoff: async () => ({
+    plan: {},
+    planName: 'Studio-test.director-adobe.json',
+    planJson: '{}',
+    media: [],
+    totalBytes: 10,
+  }),
+}));
+
+vi.mock('./adobeHandoff', () => {
+  class DirectorLocalAdobeUnavailableError extends Error {}
+  return {
+    DirectorLocalAdobeUnavailableError,
+    adobeHandoffArchiveName: () => 'Studio-test.director-adobe.zip',
+    sendDirectorAdobeHandoffToLocalService: async () => {
+      const next = adobeHarness.results.shift();
+      if (!next) throw new Error('Missing Adobe handoff test result.');
+      return next;
+    },
+    zipDirectorAdobeHandoff: async () => new Blob(['archive'], { type: 'application/zip' }),
+  };
+});
 
 const initialProject: ReelProject = {
   id: 'reel-1', title: 'Studio test', aspectRatio: '9:16', fps: 24, quality: 'draft',
@@ -82,6 +138,10 @@ describe('Director Reel Studio render transactions', () => {
     vi.restoreAllMocks();
     renderHarness.jobs.length = 0;
     renderHarness.cancellations = 0;
+    localOutputHarness.paths.length = 0;
+    localOutputHarness.saved.length = 0;
+    localOutputHarness.revealed.length = 0;
+    adobeHarness.results.length = 0;
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:render-output');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   });
@@ -104,11 +164,11 @@ describe('Director Reel Studio render transactions', () => {
     renderHarness.jobs.push(async () => new Blob([new Uint8Array([1, 2, 3])], { type: 'video/mp4' }));
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: 'Render on this device' }));
-    expect(await screen.findByRole('link', { name: 'Download MP4' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Download copy' })).toBeInTheDocument();
     expect(screen.getByText('Export checks found issues')).toBeInTheDocument();
 
     chooseOption('Quality', 'Balanced');
-    await waitFor(() => expect(screen.queryByRole('link', { name: 'Download MP4' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Download copy' })).not.toBeInTheDocument());
     expect(screen.queryByText('Export checks found issues')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Render on this device' })).toBeEnabled();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:render-output');
@@ -128,7 +188,7 @@ describe('Director Reel Studio render transactions', () => {
 
     const retry = await screen.findByRole('button', { name: 'Render on this device' });
     fireEvent.click(retry);
-    expect(await screen.findByRole('link', { name: 'Download MP4' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Download copy' })).toBeInTheDocument();
     expect(renderHarness.cancellations).toBeGreaterThanOrEqual(2);
   });
 
@@ -173,8 +233,64 @@ describe('Director Reel Studio render transactions', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Render on this device' }));
     fireEvent.click(screen.getByRole('button', { name: 'Render Balanced anyway' }));
-    expect(await screen.findByRole('link', { name: 'Download MP4' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Download copy' })).toBeInTheDocument();
     expect((JSON.parse(screen.getByTestId('project-state').textContent || '{}') as ReelProject).quality).toBe('balanced');
+  });
+
+  it('replaces the Adobe reveal target with the newly saved FFmpeg output', async () => {
+    const adobePath = '/Users/test/Movies/Director/Studio-test-20260727-120000-adobe.mp4';
+    const ffmpegPath = '/Users/test/Movies/Director/Studio-test-20260727-120100-ffmpeg.mp4';
+    adobeHarness.results.push({
+      ok: true,
+      packagePath: null,
+      planPath: null,
+      outputPath: adobePath,
+      outputBytes: 12,
+      configPath: '/Users/test/Projects/conductor/conductor.config.json',
+      adobe: {
+        status: 'rendered',
+        receipt: { deliveryCodec: 'hevc-main10', deliveryBitDepth: 10 },
+      },
+    });
+    localOutputHarness.paths.push(ffmpegPath);
+    renderHarness.jobs.push(async () => (
+      new Blob([new Uint8Array([4, 5, 6])], { type: 'video/mp4' })
+    ));
+    render(<Harness initial={{
+      ...initialProject,
+      quality: 'high',
+      renderBackend: 'after-effects',
+      colorDepth: 32,
+    }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Render with After Effects' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show output' }));
+    expect(localOutputHarness.revealed).toEqual([adobePath]);
+
+    chooseOption('Render engine', 'FFmpeg');
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Show output' })).not.toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Render on this device' }));
+    expect(await screen.findByText(/FFmpeg output saved and verified/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show output' }));
+
+    expect(localOutputHarness.saved).toEqual([{ bytes: 3, title: 'Studio test' }]);
+    expect(localOutputHarness.revealed).toEqual([adobePath, ffmpegPath]);
+  });
+
+  it('keeps the browser download when automatic FFmpeg saving fails', async () => {
+    localOutputHarness.paths.push(new Error('Disk unavailable'));
+    renderHarness.jobs.push(async () => (
+      new Blob([new Uint8Array([7, 8, 9])], { type: 'video/mp4' })
+    ));
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Render on this device' }));
+
+    expect(await screen.findByRole('link', { name: 'Download MP4' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show output' })).not.toBeInTheDocument();
+    expect(screen.getByText(/automatic saving failed/i)).toBeInTheDocument();
   });
 
   it('discards a render that finishes after the visible timeline changed', async () => {
@@ -188,7 +304,7 @@ describe('Director Reel Studio render transactions', () => {
     resolveRender(new Blob([new Uint8Array([7, 8, 9])], { type: 'video/mp4' }));
 
     expect(await screen.findByText(/older output was discarded/i)).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Download MP4' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Download copy' })).not.toBeInTheDocument();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 

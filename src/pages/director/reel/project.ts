@@ -351,6 +351,8 @@ export function createReelProject(
     clips,
     selectedClipIds: clips[0] ? [clips[0].id] : [],
     audio: null,
+    renderBackend: 'ffmpeg',
+    colorDepth: 8,
     renderRequested: false,
   };
 }

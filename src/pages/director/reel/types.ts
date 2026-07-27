@@ -3,6 +3,10 @@ import type {
   ReelQuality,
   TextLayer,
 } from '../../../shared/directorSchemas';
+import type {
+  DirectorColorDepth,
+  DirectorRenderBackend,
+} from '../../../shared/directorRenderBackend';
 
 export type { TextLayer };
 
@@ -60,6 +64,10 @@ export type ReelProject = {
   clips: ReelClip[];
   selectedClipIds: string[];
   audio: ReelAudio | null;
+  /** Optional for backwards-compatible projects; normalize to FFmpeg at use sites. */
+  renderBackend?: DirectorRenderBackend;
+  /** Internal processing precision. Adobe uses this for the composition bpc setting. */
+  colorDepth?: DirectorColorDepth;
   renderRequested: boolean;
 };
 

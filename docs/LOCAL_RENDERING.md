@@ -2,9 +2,9 @@
 
 ## Product contract
 
-Director is both a visual planning system and a local editing system. A user can build a direction from locally uploaded references, create a story, ask the Visual Expert to turn those references into a reel, revise one, several, or all clips in natural language, inspect the applied changes in a timeline, and render an MP4 without sending media to a model endpoint or cloud-render service.
+Director is both a visual planning system and a local editing system. A user can build a direction from locally uploaded references, create a story, ask the Visual Expert to turn those references into a reel, revise one, several, or all clips in natural language, inspect the applied changes in a timeline, and render locally through FFmpeg or hand the same timeline to a local Adobe After Effects bridge without sending media to a model endpoint or cloud-render service.
 
-The agent plans and applies editing operations. The browser owns media, preview, and rendering.
+The agent plans and applies editing operations. The browser owns media and preview; the user chooses the free FFmpeg renderer or the optional local Adobe renderer.
 
 ## Architecture
 
@@ -14,9 +14,9 @@ The agent plans and applies editing operations. The browser owns media, preview,
 4. **Reel project** — the browser stores clip order, multi-selection, duration, color grade, visual effect, strength, transition, motion, caption, format, fps, quality, local media references, and music. Animate may open with no canvas references so local images can be added immediately.
 5. **Shared timeline compiler** — preview, duration labels, and FFmpeg planning use the same starts and incoming overlaps. The first clip is always a cut; each later overlap is capped at two seconds and at half the duration of both adjacent clips.
 6. **Live preview** — Canvas draws the active clips, virtual camera movement, transitions, captions, and structural effects at interactive speed. JavaScript structural effects call the same deterministic `renderFrame(sourceRgba, width, height, { phase, progress, seed, intensity })` plugins used to prepare an export.
-7. **Final render** — FFmpeg.wasm runs inside its own Web Worker and receives media through an in-memory filesystem. The browser prepares deterministic structural-effect PNG sequences at half the output frame rate, FFmpeg duplicates them to the requested frame rate, then applies camera motion, CRT scan or motion echo, grades, composition, and encoding to produce a downloadable H.264/AAC MP4.
-8. **Cleanup** — temporary input, caption-overlay, and output files are deleted from the FFmpeg filesystem, then the Worker and generated core blob URLs are terminated/revoked after success, cancellation, or failure.
-9. **Project recovery** — IndexedDB auto-saves the active project, including imported image/audio bytes, while schema-validated browser-local metadata keeps up to eight recovery summaries. Canvas state, conversation, creative artifacts, reel settings, and active-project media survive refresh. Temporary object URLs and rendered downloads do not. Retired visual-effect IDs are normalized on load and the restored project carries a visible migration receipt rather than silently changing the edit.
+7. **FFmpeg render** — FFmpeg.wasm runs inside its own Web Worker and receives media through an in-memory filesystem. The browser prepares deterministic structural-effect PNG sequences at half the output frame rate, FFmpeg duplicates them to the requested frame rate, then applies camera motion, CRT scan or motion echo, grades, composition, and encoding to produce an H.264/AAC MP4. In the local app, the verified Blob is immediately sent to the loopback-only output service and saved as a unique `~/Movies/Director/<reel>-<timestamp>-ffmpeg.mp4`; **Show output** reveals that exact file. Static builds keep the normal browser download fallback.
+8. **Adobe render** — the optional After Effects backend prepares selected structural effects and camera motion as exact Director plates, writes its temporary handoff under `~/Library/Caches/Director/Adobe Handoffs`, then sends one deterministic ExtendScript transaction through the Adobe MCP. After Effects configures 32-bpc `Rec.2100 HLG Scene W100`, imports the prepared timeline, applies grades, transitions, text, and native Audio Amplitude beat markers, and queues the best installed known HLG ProRes profile. A verified delivery is moved directly into `~/Movies/Director`, and the temporary successful handoff is removed. It does not remove or replace FFmpeg.
+9. **Cleanup and recovery** — temporary FFmpeg input, caption-overlay, and output files are deleted from the in-memory filesystem, while IndexedDB auto-saves the active project and imported media. Temporary object URLs and rendered downloads do not persist. Retired visual-effect IDs are normalized on load and the restored project carries a visible migration receipt rather than silently changing the edit.
 
 No local image, audio, or rendered-video bytes, `File` objects, object URLs, or local filenames enter Director/model requests. Reel context contains bounded IDs and edit settings, including user-authored caption text. A local file's title is neutralized to `Local image N` before context is created.
 
@@ -77,6 +77,55 @@ The ffmpeg.wasm multi-thread core is not the default because end-to-end testing 
 
 The current H.264 pipeline uses `libx264`, `yuv420p`, `+faststart`, the `veryfast` preset at every tier, a CRF of 24/19/16/12 for draft/balanced/high/maximum, and optional AAC audio at 128/192 kbps. Texture-critical renders add x264's grain tuning so fine streaks and dither are less likely to be smoothed away. Maximum keeps the 1080p frame at the lowest compression and is therefore intentionally slower and usually larger even though the preset is unchanged. Moving stills are first scaled to a 1.18× working frame, animated as one continuous `zoompan` sequence with integer-aligned coordinates, then downscaled to the requested output. That sequence prevents fractional crop quantization from appearing as export-only shake. Music loops and is trimmed with the video; Director Open does not yet expose volume or fades.
 
+## Adobe backend
+
+Selecting **Adobe After Effects** never silently invokes a paid plugin. In the
+local Director app, one click prepares every selected structural effect with
+Director's shared exact frame engine, creates a temporary handoff under
+`~/Library/Caches/Director/Adobe Handoffs`, discovers the sibling Conductor
+`conductor.config.json`, sends the validated plan to the existing Adobe MCP,
+saves the After Effects project, renders only the newly created queue item
+through `aerender`, verifies the output, and moves the finished movie directly
+to `~/Movies/Director/<reel>-<timestamp>-adobe.<ext>`. **Show output** asks the
+local service to reveal that exact file in Finder. Successful temporary
+handoffs are removed; a failed handoff is retained in the cache for replay.
+There is no Chrome directory picker. `DIRECTOR_OUTPUT_ROOT` and
+`DIRECTOR_ADOBE_CONFIG` may override those presets.
+
+Static/hosted builds cannot write an arbitrary macOS path, so they automatically
+download the same complete ZIP to the browser's configured Downloads folder.
+The CLI remains available for manually replaying any retained package:
+
+```sh
+node packages/director-adobe/dist/cli.js \
+  --plan ./My-Reel.director-adobe.json \
+  --config /path/to/conductor.config.json
+```
+
+The two owned effect contracts are `director-pixel-sort` and
+`director-beat-sync`. Beat Sync is already implemented through AE's native
+**Convert Audio to Keyframes** command and writes a reusable marker map, `Beat
+Pulse` slider, adaptive beat threshold, and custom-effect keyframes. The
+execution receipt distinguishes native equivalents from built-in
+approximations and unsupported mappings. Pixel Sort and the other structural
+effects are baked with the same deterministic Director engine used by preview
+and FFmpeg export, so After Effects receives the selected effect rather than a
+blur-based approximation. The plate is currently 8-bit RGBA video; After
+Effects then performs grades, transitions, text, beat controls, composition,
+and finishing in the 32-bpc project. The float pixel-sort kernel is in
+`packages/director-adobe/native/`; the final native AE effect adapter remains
+gated on the separately licensed Adobe SDK and is never pretended to be
+installed. If neither an exact prepared plate nor the native adapter is
+available, Director fails explicitly instead of substituting blur.
+
+Director prefers a saved QuickTime/ProRes 4444 output-module template matching
+one of the names in the plan. When it is absent, Director uses the installed
+`IG HDR HLG ProRes` template as an Adobe 10-bit intermediate, then applies
+Conductor's proven HEVC Main 10 delivery step and verifies BT.2020/HLG tags
+with ffprobe. The intermediate is removed only after that verification. If
+neither Adobe profile exists, Director fails with the available template list
+instead of silently queuing AE's default codec.
+
 ## Reliability and resource boundaries
 
 - Maximum 16 still-image clips, 12 seconds per clip, and a 90-second compiled timeline after transition overlaps are applied.
@@ -91,7 +140,7 @@ The current H.264 pipeline uses `libx264`, `yuv420p`, `+faststart`, the `veryfas
 
 ## Integration requirements
 
-- Serve the compiled application from the `/director` base path; the Worker is static-only and rejects `/api/*`.
+- Serve the compiled application from the `/director` base path. The deployed Worker remains static-only and rejects `/api/*`; local Vite development adds the loopback-only Adobe output endpoint and otherwise falls back to a ZIP download.
 - Accept render images only from browser-local `File` objects and their blob URLs; remote image inputs are outside the trust boundary.
 - Preserve the isolation headers above for a future opt-in multi-thread export mode.
 - Audit authentication popups and third-party embeds before enabling `Cross-Origin-Opener-Policy` on the production route.
@@ -106,7 +155,7 @@ The shared timeline, caption routines, structural-effect plugins, absolute-secon
 
 ## Current boundary and roadmap
 
-This is a coherent still-image-and-music reel editor, not a browser clone of Premiere Pro or After Effects. It ships the complete architectural path from chat to an accountable executable edit to a real MP4, plus browser-local project and media recovery through IndexedDB. It does **not** currently provide video-clip editing, waveforms or beat detection, audio volume/fades, multilayer composition, keyframes, masks, true HDR output, undo/redo, persistent File System Access handles, hardware-accelerated WebCodecs export, an offline FFmpeg core, or pixel-identical transition preview.
+This is a coherent still-image-and-music reel editor, not a browser clone of Premiere Pro or After Effects. It ships the complete architectural path from chat to an accountable executable FFmpeg edit or Adobe handoff, plus browser-local project and media recovery through IndexedDB and reel undo/redo. It does **not** currently provide video-clip editing, browser waveforms or FFmpeg-side beat snapping, audio volume/fades, multilayer composition in the browser, masks, true HDR output from the FFmpeg H.264 path, persistent File System Access handles, hardware-accelerated WebCodecs export, an offline FFmpeg core, or pixel-identical transition preview.
 
 Reasonable next increments are:
 

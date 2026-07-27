@@ -15,6 +15,10 @@ import {
   HeadlessRenderPlanError,
 } from '../../../src/shared/directorRenderPlan';
 import {
+  buildDirectorAdobeRenderPlan,
+  DirectorAdobeRenderPlanError,
+} from '../../../src/shared/directorAdobeRenderPlan';
+import {
   describeDirectorActionSchema,
   DirectorActionSchema,
   MAX_DIRECTOR_ACTIONS,
@@ -274,6 +278,45 @@ export class DirectorMcpService {
       throw new DirectorMcpError(
         'PROJECT_INVALID',
         'A render plan could not be built for this project.',
+        { reason: error.code },
+      );
+    }
+  }
+
+  async buildAdobeRenderPlan(projectPath: string) {
+    const loaded = await this.readProject(projectPath);
+    if (!loaded.project.reelProject) {
+      throw new DirectorMcpError(
+        'PROJECT_INVALID',
+        'The project does not contain a reel timeline.',
+      );
+    }
+
+    try {
+      const plan = buildDirectorAdobeRenderPlan(
+        loaded.project.reelProject,
+        { allowMissingMedia: true },
+      );
+      const missingMedia = plan.media
+        .filter((entry) => !entry.available)
+        .map((entry) => ({
+          id: entry.id,
+          kind: entry.kind,
+          relativePath: entry.relativePath,
+        }));
+      return {
+        ok: true,
+        path: loaded.displayPath,
+        title: loaded.project.title,
+        plan,
+        mediaComplete: missingMedia.length === 0,
+        missingMedia,
+      };
+    } catch (error) {
+      if (!(error instanceof DirectorAdobeRenderPlanError)) throw error;
+      throw new DirectorMcpError(
+        'PROJECT_INVALID',
+        'An Adobe render plan could not be built for this project.',
         { reason: error.code },
       );
     }

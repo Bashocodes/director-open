@@ -40,7 +40,7 @@ const MAX_CORE_ASSET_BYTES = 64 * 1_048_576;
 // address space and end as the opaque `Aborted()` error shown by FFmpeg.
 const MOTION_OVERSCAN = 1.18;
 
-type RenderCallbacks = {
+export type RenderCallbacks = {
   onStage: (stage: 'loading' | 'preparing' | 'rendering', message: string) => void;
   onProgress: (progress: number) => void;
   onLog?: (message: string) => void;

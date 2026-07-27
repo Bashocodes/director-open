@@ -53,6 +53,14 @@ describe('local reel media safeguards', () => {
       ...initial,
       audio: initial.audio ? { ...initial.audio, url: 'blob:replacement-audio' } : null,
     }));
+    expect(reelProjectFingerprint(initial)).not.toBe(reelProjectFingerprint({
+      ...initial,
+      renderBackend: 'after-effects',
+    }));
+    expect(reelProjectFingerprint(initial)).toBe(reelProjectFingerprint({
+      ...initial,
+      colorDepth: 16,
+    }));
   });
 
   it('validates known local media before loading the engine', () => {

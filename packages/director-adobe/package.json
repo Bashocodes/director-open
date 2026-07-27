@@ -1,0 +1,32 @@
+{
+  "name": "director-adobe",
+  "version": "0.1.0-alpha.0",
+  "description": "Local Director Open bridge for After Effects through an Adobe MCP server.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "director-adobe": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": ["dist", "native", "README.md"],
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config vitest.config.ts && node scripts/test-native.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "fflate": "^0.8.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.12.0",
+    "typescript": "^5.5.3",
+    "vite": "^7.3.0",
+    "vitest": "^4.0.10"
+  }
+}

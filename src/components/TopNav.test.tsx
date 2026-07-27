@@ -1,20 +1,18 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { TopNav } from './TopNav';
 
-describe('TopNav standalone identity', () => {
-  it('presents the neutral open-source identity without external product links', () => {
+describe('TopNav workspace shell', () => {
+  it('contains exactly the Director and Conductor tabs', () => {
     render(<TopNav />);
 
-    expect(screen.getByLabelText('Director Open')).toBeInTheDocument();
-    expect(screen.getByText('Director Open')).toHaveAttribute('aria-current', 'page');
-    const privacy = screen.getByRole('button', { name: /100% local — your media never leaves this browser/i });
-    expect(privacy).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(privacy);
-    expect(privacy).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByLabelText('Local media privacy')).toHaveTextContent('stored in IndexedDB');
-    expect(screen.getByLabelText('Local media privacy')).toHaveTextContent('static app files only');
-    expect(screen.getByLabelText('Local media privacy')).toHaveTextContent('no media upload, storage, proxy, analytics, or telemetry endpoint');
-    expect(screen.queryAllByRole('link')).toHaveLength(0);
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(2);
+    expect(links[0]).toHaveTextContent('Director');
+    expect(links[0]).toHaveAttribute('href', '/director/');
+    expect(links[0]).toHaveAttribute('aria-current', 'page');
+    expect(links[1]).toHaveTextContent('Conductor');
+    expect(links[1]).toHaveAttribute('href', '/conductor/');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

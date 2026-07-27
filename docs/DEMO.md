@@ -37,7 +37,7 @@ Before recording:
 **On screen**
 
 Open the empty direction board. Click
-**100% local — your media never leaves this browser** and leave the privacy
+**100% local — your media never leaves this device** and leave the privacy
 panel open briefly.
 
 **Say**

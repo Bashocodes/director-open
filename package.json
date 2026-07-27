@@ -12,25 +12,30 @@
     "dev": "pnpm build && concurrently -k -n web,worker -c blue,green \"vite --port 5190 --strictPort\" \"wrangler dev --port 8790 --local\"",
     "dev:web": "vite --port 5190 --strictPort",
     "dev:worker": "wrangler dev --port 8790 --local",
-    "build": "vite build && pnpm --filter director-mcp build",
+    "build": "pnpm sync:conductor-console && pnpm build:app",
+    "build:app": "vite build && pnpm --filter director-mcp build && pnpm --filter director-adobe build",
+    "build:production": "node scripts/sync-conductor-console.mjs --required && pnpm build:app",
+    "sync:conductor-console": "node scripts/sync-conductor-console.mjs",
     "preview": "pnpm build && wrangler dev --port 8790 --local",
-    "deploy": "pnpm build && wrangler deploy",
-    "deploy:dry-run": "pnpm build && wrangler deploy --dry-run",
+    "deploy:preflight": "wrangler deployments list --name director-open",
+    "deploy": "pnpm deploy:preflight && pnpm build:production && wrangler deploy",
+    "deploy:dry-run": "pnpm deploy:preflight && pnpm build:production && wrangler deploy --dry-run",
     "worker:types": "wrangler types --env-file wrangler.types.vars",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.worker.json && pnpm --filter director-mcp typecheck",
-    "test": "vitest run && pnpm --filter director-mcp test",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.worker.json && pnpm --filter director-mcp typecheck && pnpm --filter director-adobe typecheck",
+    "test": "vitest run && pnpm --filter director-mcp test && pnpm --filter director-adobe test",
     "verify": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "0.12.15",
     "@xyflow/react": "^12.10.0",
+    "fflate": "^0.8.2",
     "lucide-react": "^0.554.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260719.1",
+    "@cloudflare/workers-types": "^5.20260727.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^18.3.5",
@@ -42,7 +47,7 @@
     "typescript": "^5.5.3",
     "vite": "^7.3.0",
     "vitest": "^4.0.10",
-    "wrangler": "^4.41.0"
+    "wrangler": "^4.114.0"
   },
   "packageManager": "pnpm@11.9.0"
 }

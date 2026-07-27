@@ -7,4 +7,4 @@ allowBuilds:
   workerd: true
 confirmModulesPurge: false
 minimumReleaseAgeExclude:
-  - '@cloudflare/workers-types@5.20260719.1'
+  - '@cloudflare/workers-types@5.20260719.1 || 5.20260727.1'

@@ -19,6 +19,7 @@ execute FFmpeg, or execute shell commands.
 | `apply_actions(path, actions[])` | Applies a bounded action batch transactionally and returns receipts. | Yes |
 | `compile_timeline(path)` | Returns compiled clip starts, overlaps, and total duration. | No |
 | `build_render_plan(path)` | Returns FFmpeg arguments and the filtergraph without executing them. | No |
+| `build_adobe_render_plan(path)` | Returns a validated symbolic After Effects plan and identifies media placeholders that the browser handoff must package. | No |
 
 ## Build and run locally
 
@@ -148,7 +149,10 @@ write-capable `apply_actions` tool.
   timeline compiler, and render-plan code. It does not maintain parallel copies
   of those contracts.
 - The server has no HTTP transport, network calls, shell execution, subprocess
-  execution, or FFmpeg execution. `build_render_plan` returns data only.
+  execution, or FFmpeg execution. `build_render_plan` and
+  `build_adobe_render_plan` return data only. Adobe execution belongs to the
+  separate local Director Adobe bridge and is never an implicit side effect of
+  a project-inspection tool.
 - Project media remains on disk. MCP responses contain compact project metadata,
   not imported media bytes.
 - Tool errors use stable machine-readable codes and do not expose stack traces.

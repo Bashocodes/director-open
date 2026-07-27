@@ -1,6 +1,8 @@
-# Isolated deployment lane
+# Director/Conductor deployment lane
 
-Director Open deploys as the Cloudflare Worker named `director-open`. The committed configuration enables only the account's `workers.dev` hostname and contains no custom domain, route, zone, or service binding.
+Director Open targets the existing Cloudflare Worker named `director-open`. The committed configuration keeps its `workers.dev` hostname and assigns only `director.aikizi.com` as a Custom Domain. It contains no service binding and must never create a second Worker.
+
+The `aikizi.com` apex, `www.aikizi.com`, and the live `aikizi.com/director*` route are outside this deployment lane and must not be edited.
 
 ## Prerequisites
 
@@ -52,6 +54,8 @@ pnpm deploy:dry-run
 
 The dry run builds `dist/`, validates `wrangler.jsonc`, bundles the Worker, resolves static assets, and stops without creating a production deployment.
 
+Both deployment commands first run `wrangler deployments list --name director-open`. If that Worker does not already exist in the authenticated account, the command stops instead of allowing Wrangler to create it.
+
 ## Deploy
 
 After deliberately confirming the Cloudflare account and reviewing the dry run:
@@ -64,15 +68,28 @@ The deployment lands on:
 
 ```text
 https://director-open.<your-workers-subdomain>.workers.dev/director/
+https://director.aikizi.com/director/
 ```
 
-Cloudflare supplies `<your-workers-subdomain>` from the authenticated account. This repository does not configure or infer it.
+The Worker redirects `/` to `/director/`. Cloudflare supplies `<your-workers-subdomain>` from the authenticated account.
 
-## Warning: isolated route ownership
+## Custom domain boundary
 
-**Never add predecessor-owned or private custom-domain routes to this worker from this repository — public route wiring is a separate, deliberate decision.**
+The only approved custom hostname is `director.aikizi.com`, attached to the same `director-open` Worker with `custom_domain: true`. Cloudflare owns certificate issuance and the single DNS record for that hostname. Do not add, replace, or edit records for the apex, `www`, or any other `aikizi.com` hostname.
 
-Do not add `routes`, custom domains, zone identifiers, or production-domain patterns to `wrangler.jsonc` as part of routine deployment. The Worker name and workers.dev-only configuration are the collision boundary.
+The Conductor process must be started with that exact HTTPS origin:
+
+```bash
+CONDUCTOR_PUBLIC_ORIGIN=https://director.aikizi.com conductor serve --no-open
+```
+
+Its CORS guard intentionally refuses every other public origin.
+
+## Conductor bundle guard
+
+An ordinary `pnpm build` can run in the standalone Director checkout used by CI. If Conductor is unavailable, it writes a conspicuous non-deployable placeholder at `/conductor/` rather than failing.
+
+`pnpm deploy` and `pnpm deploy:dry-run` use `build:production`, which requires a real Conductor checkout beside Director or at `CONDUCTOR_REPO`. They fail before Wrangler runs if only the placeholder could be produced.
 
 ## Rollback
 

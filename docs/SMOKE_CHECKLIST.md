@@ -35,7 +35,7 @@ failure; do not treat a partial run as a pass.
 
 2. **Read the local-media promise.**
 
-   Click **100% local — your media never leaves this browser** in the top
+   Click **100% local — your media never leaves this device** in the top
    navigation, read the panel, and close it.
 
    Expected: **Local media privacy** explains IndexedDB storage, a static-only
