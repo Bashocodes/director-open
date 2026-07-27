@@ -18,6 +18,11 @@ endif()
 set(AE_EXAMPLES "${AFTER_EFFECTS_SDK_ROOT}/Examples")
 set(PLUGIN_BUNDLE "${CMAKE_BINARY_DIR}/DirectorPixelSort.plugin")
 
+# Exactly eight bytes, no trailing newline: the four-character package type
+# followed by the creator signature.
+set(PKGINFO_FILE "${CMAKE_BINARY_DIR}/PkgInfo")
+file(WRITE "${PKGINFO_FILE}" "eFKTFXTC")
+
 add_library(director_pixel_sort_module MODULE
   DirectorPixelSort.cpp
   director_pixel_sort_core.cpp
@@ -73,11 +78,16 @@ add_custom_command(TARGET director_pixel_sort_module POST_BUILD
     -I "${AE_EXAMPLES}/Resources"
     -o "${PLUGIN_BUNDLE}/Contents/Resources/DirectorPixelSort.rsrc"
     "${CMAKE_CURRENT_SOURCE_DIR}/DirectorPixelSortPiPL.r"
+  # The loader reads the eFKT/FXTC pair from PkgInfo as well as Info.plist.
+  # It must land before codesign so the signature seals it.
+  COMMAND "${CMAKE_COMMAND}" -E copy "${PKGINFO_FILE}"
+    "${PLUGIN_BUNDLE}/Contents/PkgInfo"
   COMMAND xattr -cr "${PLUGIN_BUNDLE}"
   COMMAND codesign --force --sign - "${PLUGIN_BUNDLE}"
   BYPRODUCTS
     "${PLUGIN_BUNDLE}/Contents/MacOS/DirectorPixelSort"
     "${PLUGIN_BUNDLE}/Contents/Resources/DirectorPixelSort.rsrc"
+    "${PLUGIN_BUNDLE}/Contents/PkgInfo"
   VERBATIM
 )
 

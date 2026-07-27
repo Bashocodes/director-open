@@ -12,6 +12,16 @@
   <string>Director Pixel Sort</string>
   <key>CFBundlePackageType</key>
   <string>eFKT</string>
+  <!--
+    Adobe's plugin loader identifies an effect bundle by the eFKT/FXTC pair.
+    Without the signature and the matching Contents/PkgInfo, After Effects
+    scans the bundle, finds no loader that claims it, and sets it to Ignore
+    before EffectMain is ever called.
+  -->
+  <key>CFBundleSignature</key>
+  <string>FXTC</string>
+  <key>LSRequiresCarbon</key>
+  <true/>
   <key>CFBundleShortVersionString</key>
   <string>1.0.0</string>
   <key>CFBundleVersion</key>
