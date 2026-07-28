@@ -75,6 +75,11 @@ assert(!/<style(?:\s|>)/i.test(html), "the hosted Conductor page contains inline
 assert(!/<script(?:\s|>)(?![^>]*\bsrc=)/i.test(html), "the hosted Conductor page contains inline JavaScript.");
 assert(cssStat.size > 1_000 && css.trim().length > 1_000, "the Conductor stylesheet is empty or incomplete.");
 assert(javascriptStat.size > 10_000 && javascript.trim().length > 10_000, "the Conductor script is empty or incomplete.");
+/* The three assertions below are string contracts against Conductor's source,
+   in a different repository. They catch a stale sync, which is their job, but a
+   rename on the Conductor side lands here as "your bundle is stale" rather than
+   "an identifier moved" — so check Conductor's history before believing the
+   sync is at fault. This is the same coupling that let `defer` block deploys. */
 assert(javascript.includes('showConnectionState("not-started")'), "the hosted Conductor connection gate is stale.");
 assert(javascript.includes('targetAddressSpace: "loopback"'), "the hosted Conductor loopback annotation is missing.");
 assert(
