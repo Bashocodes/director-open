@@ -4,7 +4,20 @@
 
 Director Open is a fresh, standalone repository extracted from a completed predecessor codebase. The source worktree was clean before extraction and remained clean after all work.
 
-The copied project has a neutral identity, no production route or account identifier, no private service binding, no remote corpus or image proxy, no bundled gallery, and no dependency on the legacy product's services. Its library starts empty and accepts browser-local JPEG, PNG, and WebP uploads.
+At extraction time, the copied project had a neutral identity, no production route or account identifier, no private service binding, no remote corpus or image proxy, no bundled gallery, and no dependency on the legacy product's services. Its library starts empty and accepts browser-local JPEG, PNG, and WebP uploads.
+
+## Publication update — 2026-07-28
+
+Subsequent deployment work intentionally added the non-secret Cloudflare account
+identifier and the single `director.aikizi.com` Custom Domain now recorded in
+`wrangler.jsonc`. Static `ASSETS` remains the Worker's only binding; it still has
+no provider secret, database, upload route, AI proxy, remote corpus, image proxy,
+or private service binding.
+
+Before publication, the repository histories were rebuilt to remove AI-session
+URLs from commit messages and to remove retired sample images and embedded image
+generation metadata. The current sample images contain no author, prompt, job,
+profile, style-reference, GPS, or other identifying metadata.
 
 ## Copy boundary
 
@@ -86,7 +99,7 @@ The replacement is a neutral empty-library state with a browser-local image pick
 - `docs/OPENAI_IMPLEMENTATION.md:1-31` — removed event evidence and remote corpus behavior; retained structured provider and privacy details.
 - `THIRD_PARTY_NOTICES.md:11` — licensing-review responsibility assigned to project maintainers.
 
-All event-name, prior-domain, and legacy-brand matches are gone. All hosted-image URLs, private binding names, route/account identifiers, and legacy branding shown to users were removed. The shared canvas-object source discriminator now matches the application and persistence schemas.
+All event-name, prior-domain, and legacy-brand matches are gone. All hosted-image URLs, private binding names, and legacy branding shown to users were removed. The current Cloudflare account identifier and Custom Domain are deliberate deployment metadata, not credentials. The shared canvas-object source discriminator now matches the application and persistence schemas.
 
 ## Protected engine and schema boundary
 
@@ -107,7 +120,8 @@ All event-name, prior-domain, and legacy-brand matches are gone. All hosted-imag
 - Removed the persisted live-search result test from `directorPersistence.test.ts`; all other recovery, migration, local-media omission, history, and bounds tests remain.
 - Updated neutral fixture labels, origins, and expected output names in affected tests.
 
-Current suite: **32 test files passed, 160 tests passed**.
+Current suite: **66 JavaScript/TypeScript test files passed, 429 tests passed**,
+plus the native pixel-sort core and exact-float bridge parity checks.
 
 ## Secrets hygiene
 
@@ -117,7 +131,9 @@ Current suite: **32 test files passed, 160 tests passed**.
 - High-confidence scans found no provider-key, cloud access-key, Git hosting token, Slack token, JWT, or private-key material.
 - A generic assignment scan found only explicit test placeholders; none match real credential formats.
 - URL review found only localhost, reserved `.test` origins, public provider endpoints, jsDelivr, and public documentation/source links.
-- `wrangler.jsonc` contains no route, zone/account identifier, private URL, or service binding.
+- `wrangler.jsonc` contains the intended public Custom Domain and non-secret
+  Cloudflare account identifier. It contains no token, private URL, provider
+  secret, database binding, or private service binding.
 
 ## Verification
 
@@ -134,7 +150,8 @@ Results:
 - Install: lockfile refreshed after removing the server-side OpenAI SDK; 239 packages installed/reused.
 - Worker types: regenerated successfully from the stripped configuration.
 - Typecheck: browser and Worker TypeScript projects passed.
-- Tests: 32 files passed; 160 tests passed.
+- Tests: 66 JavaScript/TypeScript files passed; 429 tests passed.
+- Native checks: pixel-sort core and exact 32-bit float bridge parity passed.
 - Build: 1,977 modules transformed; production build completed in 853 ms.
 - Build emitted one existing advisory that the main minified chunk is larger than 500 kB; it is a warning, not a verification failure.
 - Overall `pnpm verify`: **exit 0**.

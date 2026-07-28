@@ -84,7 +84,7 @@ below are transitive dependencies resolved by pnpm.
 | Package | Resolved version | License |
 | --- | ---: | --- |
 | `@modelcontextprotocol/sdk` * | 1.29.0 | MIT |
-| `@hono/node-server` | 1.19.14 | MIT |
+| `@hono/node-server` | 2.0.10 | MIT |
 | `accepts` | 2.0.0 | MIT |
 | `ajv` | 8.20.0 | MIT |
 | `ajv-formats` | 3.0.1 | MIT |
