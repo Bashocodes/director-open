@@ -77,13 +77,27 @@ The Worker redirects `/` to `/director/`. Cloudflare supplies `<your-workers-sub
 
 The only approved custom hostname is `director.aikizi.com`, attached to the same `director-open` Worker with `custom_domain: true`. Cloudflare owns certificate issuance and the single DNS record for that hostname. Do not add, replace, or edit records for the apex, `www`, or any other `aikizi.com` hostname.
 
-The Conductor process must be started with that exact HTTPS origin:
+The Conductor process must be started with that exact HTTPS origin. Run this from
+your Conductor checkout, which every Conductor user has — the engine spawns MCP
+servers and shells out to `ffmpeg`/`aerender`, so it can never be hosted:
+
+```bash
+CONDUCTOR_PUBLIC_ORIGIN=https://director.aikizi.com pnpm serve
+```
+
+The bare `conductor` binary is not on npm and is not installed globally by
+default. Run `pnpm link --global` once inside the Conductor checkout if you want
+this form to resolve from any directory:
 
 ```bash
 CONDUCTOR_PUBLIC_ORIGIN=https://director.aikizi.com conductor serve --no-open
 ```
 
 Its CORS guard intentionally refuses every other public origin.
+
+Once the engine is listening, the hosted `/conductor/` tab connects on its own —
+its failure card watches loopback and latches as soon as `127.0.0.1:4173`
+answers, so starting the engine after opening the tab needs no second click.
 
 ## Conductor bundle guard
 

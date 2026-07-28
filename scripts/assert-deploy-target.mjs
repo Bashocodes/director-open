@@ -57,14 +57,30 @@ const [html, css, javascript, cssStat, javascriptStat] = await Promise.all([
 
 assert(!html.includes('data-conductor-bundle="placeholder"'), "the Conductor page is a placeholder.");
 assert(!html.includes("Conductor console was not bundled in this build"), "the Conductor page is a placeholder.");
-assert(html.includes('<link rel="stylesheet" href="/conductor/console.css">'), "external Conductor CSS is missing.");
-assert(html.includes('<script src="/conductor/console.js"></script>'), "external Conductor JavaScript is missing.");
+/* Match the asset reference, not one exact spelling of the tag. These were
+   literal string compares until the Conductor emitter added `defer` to the
+   script tag, which silently blocked every deployment: the guard was asserting
+   punctuation it did not care about. What it actually needs to know is that the
+   page pulls both assets from /conductor/ rather than inlining them, which the
+   inline-content assertions below then confirm. */
+assert(
+  /<link\s[^>]*\bhref="\/conductor\/console\.css"/i.test(html),
+  "external Conductor CSS is missing.",
+);
+assert(
+  /<script\s[^>]*\bsrc="\/conductor\/console\.js"/i.test(html),
+  "external Conductor JavaScript is missing.",
+);
 assert(!/<style(?:\s|>)/i.test(html), "the hosted Conductor page contains inline CSS.");
 assert(!/<script(?:\s|>)(?![^>]*\bsrc=)/i.test(html), "the hosted Conductor page contains inline JavaScript.");
 assert(cssStat.size > 1_000 && css.trim().length > 1_000, "the Conductor stylesheet is empty or incomplete.");
 assert(javascriptStat.size > 10_000 && javascript.trim().length > 10_000, "the Conductor script is empty or incomplete.");
 assert(javascript.includes('showConnectionState("not-started")'), "the hosted Conductor connection gate is stale.");
 assert(javascript.includes('targetAddressSpace: "loopback"'), "the hosted Conductor loopback annotation is missing.");
+assert(
+  javascript.includes("startAutoReconnect"),
+  "the hosted Conductor bundle predates the auto-reconnect watcher; re-sync it.",
+);
 
 process.stdout.write(
   `Deployment guard passed: ${expected.worker} may be created or updated in ${expected.accountId}; `
