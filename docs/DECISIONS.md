@@ -140,7 +140,9 @@ ships; no remote provider, network access, or media egress is introduced.
 ## Isolated deployment
 
 The Cloudflare Worker is configured for its own `workers.dev` hostname and the
-exact `director.aikizi.com` Custom Domain. It contains no account identifier,
-private service binding, or external application origin. The `aikizi.com` apex,
+exact `director.aikizi.com` Custom Domain. The Cloudflare account id is named on
+purpose (wrangler.jsonc, scripts/assert-deploy-target.mjs) so a deploy can only
+land on that account; there is no private service binding or external
+application origin. The `aikizi.com` apex,
 `www`, and the live `aikizi.com/director*` route remain separate and must not be
 modified by this deployment.
