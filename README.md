@@ -1,12 +1,12 @@
 # Director Open
 
-> A local-first reel studio that humans and AI agents can both drive — your media never leaves the browser.
+A reel studio in the browser that you and an AI agent can both drive. Bring your images and audio. Lay out the story on a
+canvas, cut the reel by hand or by asking an optional AI provider (your own key), then render the MP4 on your own machine.
+Your media, projects and renders stay in the browser. The server only serves static files.
 
-![The Director Open workspace: a reel preview on the left with an anamorphic-streak
-effect applied, the plugin's generated parameter controls on the right, and the
-timeline, undo controls and local render bar below.](docs/images/director-open-hero.jpg)
+![The Director Open workspace: reel preview, generated effect controls, timeline and local render bar.](docs/images/director-open-hero.jpg)
 
-Director Open is a browser-based visual direction and reel editor. Bring your own images and audio, shape a structured story on the canvas, edit the reel manually or with an optional AI provider, and render and inspect the MP4 on your device.
+Try it: https://director.aikizi.com/director/
 
 ## Features
 
@@ -125,6 +125,8 @@ Contributions are welcome, especially focused plugin additions. Read [CONTRIBUTI
 
 ## License
 
-Director Open is licensed under the [MIT License](./LICENSE), copyright © 2026 KALAI LABS.
+MIT. See [LICENSE](LICENSE).
 
 The runtime FFmpeg core is separate GPL-licensed software; see the FFmpeg licensing section above.
+
+Made by cyberyogi (Sharan Ramakrishna). Everything I make: https://inkoji.com/cyberyogi

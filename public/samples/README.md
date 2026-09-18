@@ -16,7 +16,7 @@ effect library both have something to bite on.
 ## Provenance and licence
 
 Both images were generated with Midjourney by the author of this repository,
-KALAI LABS, who owns them and contributes them to this project under the same
+Sharan Ramakrishna (cyberyogi), who owns them and contributes them to this project under the same
 MIT licence as the code (see `LICENSE`).
 
 They depict no real person and no religious subject, and are not derived from
