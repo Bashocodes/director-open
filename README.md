@@ -1,14 +1,67 @@
 # Director Open
 
-A reel studio in the browser that you and an AI agent can both drive. Bring your images and audio. Lay out the story on a
-canvas, cut the reel by hand or by asking an optional AI provider (your own key), then render the MP4 on your own machine.
-Your media, projects and renders stay in the browser. The server only serves static files.
+**A reel studio in the browser that people and AI agents can both drive, and the front door of the Director suite.**
 
 ![The Director Open workspace: reel preview, generated effect controls, timeline and local render bar.](docs/images/director-open-hero.jpg)
 
 Try it: https://director.aikizi.com/director/
 
-## Features
+## The Director suite
+
+Four MIT tools for making short films and reels with agents in the loop. Each one runs on its own.
+
+```mermaid
+flowchart LR
+  V["VETTU<br/>film board: say the cut<br/>(stands alone)"]
+  subgraph S["director.aikizi.com (one page, two tabs)"]
+    D["Director Open<br/>edit + render in the browser"]
+    C["Conductor<br/>After Effects recipes over MCP"]
+  end
+  R["Reel-HDR<br/>Dolby Vision 8.4 delivery"]
+  D -- "MP4 / HLG master" --> R
+  C -- "HLG render" --> R
+```
+
+- **[VETTU](https://github.com/Bashocodes/vettu)**: a film board where you say the cut and agents make it. It stands on
+  its own; nothing in code links it to the other three.
+- **Director Open** (this repo): the engine. It edits the reel and renders the MP4 on your device. Its build pulls in
+  Conductor's console, and both tools are served as two tabs of one page at director.aikizi.com.
+- **[Conductor](https://github.com/Bashocodes/conductor)**: replayable motion-design recipes (titles, transitions, an
+  HDR-safe grade) run in After Effects over MCP.
+- **[Reel-HDR](https://github.com/Bashocodes/reel-hdr)**: takes the finished video and delivers a Dolby Vision 8.4 file
+  that survives Instagram, checked before it reports done.
+
+### Get all four
+
+Each repo installs with its own tool: pnpm for Director Open and Conductor, npm for VETTU, uv for Reel-HDR.
+
+```bash
+git clone https://github.com/Bashocodes/director-open.git && (cd director-open && pnpm install)
+git clone https://github.com/Bashocodes/conductor.git && (cd conductor && pnpm install)
+git clone https://github.com/Bashocodes/vettu.git && (cd vettu && npm ci)
+git clone https://github.com/Bashocodes/reel-hdr.git && (cd reel-hdr && uv tool install .)
+```
+
+Each README has the run steps and needs: Node 22+ for the three JavaScript tools; FFmpeg, MP4Box and dovi_tool for
+Reel-HDR; an Adobe MCP server for Conductor's real runs.
+
+### Proof of use
+
+- **SAAKSHE**: a short film made with AI, submitted to the Astana AI Film Festival:
+  https://youtu.be/w2P4WKBWlF4. VETTU was built after the cut to edit the film's board by speaking the change;
+  SAAKSHE is its demo film.
+- **director.aikizi.com/director/** runs Director Open and Conductor live, together. **aikizi.com/director** ran the
+  engine Director Open grew from.
+- **Reel-HDR** is the open version of the pipeline that delivers my HDR reels to Instagram.
+- Everything I make: https://inkoji.com/cyberyogi
+
+## Director Open
+
+A reel studio in the browser that you and an AI agent can both drive. Bring your images and audio. Lay out the story on a
+canvas, cut the reel by hand or by asking an optional AI provider (your own key), then render the MP4 on your own machine.
+Your media, projects and renders stay in the browser. The server only serves static files.
+
+### Features
 
 - **Local-first media:** imported images, audio, generated frames, previews, project recovery, and MP4 rendering stay in the browser. Projects and media blobs persist in IndexedDB.
 - **Bring-your-own-key AI:** optional browser-direct adapters support OpenAI, Anthropic, Google Gemini, and OpenAI-compatible custom or local servers such as Ollama, LM Studio, and vLLM. Keys stay in browser storage and are sent only to the selected provider.
