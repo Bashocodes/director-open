@@ -91,6 +91,7 @@ async function staticAsset(request: Request, env: WorkerEnv) {
   response.headers.set('x-frame-options', 'DENY');
   response.headers.set('x-content-type-options', 'nosniff');
   response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+  response.headers.set('x-robots-tag', 'noindex, nofollow');
   return response;
 }
 
@@ -101,6 +102,16 @@ export default {
       if (url.pathname === '/') {
         url.pathname = '/director/';
         return Response.redirect(url.toString(), 308);
+      }
+      if (url.pathname === '/robots.txt') {
+        // The hosted studio is a tool, not a page to rank; aikizi.com/director is its public door.
+        return new Response('User-agent: *\nDisallow: /\n', {
+          headers: {
+            'content-type': 'text/plain; charset=utf-8',
+            'cache-control': 'public, max-age=86400',
+            'x-robots-tag': 'noindex',
+          },
+        });
       }
       if (url.pathname === '/director' || url.pathname === '/conductor') {
         url.pathname = `${url.pathname}/`;
